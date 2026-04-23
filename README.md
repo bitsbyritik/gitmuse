@@ -2,6 +2,11 @@
 
 > AI-generated commit messages in seconds. Free, local, or cloud — your choice.
 
+[![npm version](https://img.shields.io/npm/v/gitmuse)](https://www.npmjs.com/package/gitmuse)
+[![npm downloads](https://img.shields.io/npm/dm/gitmuse)](https://www.npmjs.com/package/gitmuse)
+[![license](https://img.shields.io/github/license/bitsbyritik/gitmuse)](LICENSE)
+[![node](https://img.shields.io/node/v/gitmuse)](https://nodejs.org)
+
 ```bash
 npm install -g gitmuse
 ```
@@ -26,6 +31,14 @@ npm install -g gitmuse
 - **interactive TUI** — edit, regenerate, or confirm before anything is committed
 - **git hook support** — `gm install` wires it into your repo permanently
 - **tiny footprint** — single ESM bundle, Node 18+, no native deps
+
+## why gitmuse
+
+- **Groq is genuinely free** — 14,400 requests/day, no credit card, no usage cap on the free tier
+- **works offline** — Ollama runs entirely on your machine; your diff never leaves
+- **tokens stream live** — you see the message build word by word, not a spinner then a wall of text
+- **your keys, your data** — gitmuse never proxies your requests; it calls provider APIs directly from your machine
+- **6 providers, one command to switch** — `gm --provider gemini` overrides for a single run without touching config
 
 ---
 
@@ -168,11 +181,11 @@ gm config set gemini.model gemini-2.5-flash # optional — this is the default
 
 Available free-tier models:
 
-| model | rate limit | notes |
-| ----- | ---------- | ----- |
+| model              | rate limit | notes                                     |
+| ------------------ | ---------- | ----------------------------------------- |
 | `gemini-2.5-flash` | 10 req/min | default — best balance of speed + quality |
-| `gemini-1.5-flash` | 15 req/min | slightly older, still excellent |
-| `gemini-1.5-pro`   | 2 req/min  | higher quality, stricter limits |
+| `gemini-1.5-flash` | 15 req/min | slightly older, still excellent           |
+| `gemini-1.5-pro`   | 2 req/min  | higher quality, stricter limits           |
 
 **Custom OpenAI-compatible endpoint** (LM Studio, Jan, vLLM, etc.)
 
@@ -226,8 +239,8 @@ gm uninstall
 
 ```typescript
 // src/adapters/my-provider.ts
-import { BaseAdapter } from "./base.js";
-import type { Config } from "../types.js";
+import { BaseAdapter } from './base.js';
+import type { Config } from '../types.js';
 
 export class MyProviderAdapter extends BaseAdapter {
   constructor(private config: Config) {
@@ -235,8 +248,8 @@ export class MyProviderAdapter extends BaseAdapter {
   }
 
   async *stream(prompt: string): AsyncIterable<string> {
-    const res = await fetch("https://api.myprovider.com/v1/generate", {
-      method: "POST",
+    const res = await fetch('https://api.myprovider.com/v1/generate', {
+      method: 'POST',
       headers: { Authorization: `Bearer ${this.config.myProvider.apiKey}` },
       body: JSON.stringify({ prompt, stream: true }),
     });
@@ -254,12 +267,13 @@ Then register it in `src/adapters/index.ts` and open a PR. Contributions welcome
 
 ## comparison
 
-| tool        | install     | offline      | free tier               | streams | interactive |
-| ----------- | ----------- | ------------ | ----------------------- | ------- | ----------- |
-| **gitmuse** | `npm i -g`  | yes (Ollama) | yes (Groq + Gemini)     | yes     | yes         |
-| aicommits   | `npm i -g`  | no           | no                      | no      | no          |
-| gpt-commit  | pip         | no           | no                      | no      | no          |
-| commitgpt   | browser ext | no           | no                      | no      | no          |
+| tool            | install     | offline      | free tier           | streams | interactive | providers |
+| --------------- | ----------- | ------------ | ------------------- | ------- | ----------- | --------- |
+| **gitmuse**     | `npm i -g`  | yes (Ollama) | yes (Groq + Gemini) | yes     | yes         | 6         |
+| opencommit      | `npm i -g`  | no           | no                  | no      | no          | 3         |
+| aicommits       | `npm i -g`  | no           | no                  | no      | no          | 1         |
+| gpt-commit      | pip         | no           | no                  | no      | no          | 1         |
+| commitgpt       | browser ext | no           | no                  | no      | no          | 1         |
 
 ---
 
@@ -291,6 +305,12 @@ npm run test
 ```
 
 Commit messages must follow conventional commits — feel free to use `gm` itself to generate them.
+
+---
+
+## star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=bitsbyritik/gitmuse&type=Date)](https://star-history.com/#bitsbyritik/gitmuse&Date)
 
 ---
 

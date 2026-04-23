@@ -20,7 +20,7 @@ npm install -g gitmuse
 
 - **zero config to start** — works with Ollama out of the box, no API key needed
 - **free cloud tier** — Groq's free API gives you 14,000 requests/day at zero cost
-- **any provider** — Ollama, OpenAI, Groq, Anthropic, or any OpenAI-compatible endpoint
+- **any provider** — Ollama, OpenAI, Groq, Anthropic, Gemini, or any OpenAI-compatible endpoint
 - **conventional commits** — always generates `feat:`, `fix:`, `chore:` format
 - **live streaming** — watch tokens appear as they generate
 - **interactive TUI** — edit, regenerate, or confirm before anything is committed
@@ -158,6 +158,22 @@ gm config set anthropic.apiKey sk-ant-xxxxxxxxxxxx
 gm config set anthropic.model claude-haiku-4-5
 ```
 
+**Gemini (cloud, free tier)**
+
+```bash
+gm config set provider gemini
+gm config set gemini.apiKey YOUR_KEY_HERE   # free at aistudio.google.com
+gm config set gemini.model gemini-2.0-flash # optional — this is the default
+```
+
+Available free-tier models:
+
+| model | rate limit | notes |
+| ----- | ---------- | ----- |
+| `gemini-2.0-flash` | 15 req/min | default — best balance of speed + quality |
+| `gemini-1.5-flash` | 15 req/min | slightly older, still excellent |
+| `gemini-1.5-pro`   | 2 req/min  | higher quality, stricter limits |
+
 **Custom OpenAI-compatible endpoint** (LM Studio, Jan, vLLM, etc.)
 
 ```bash
@@ -179,6 +195,7 @@ GITMUSE_MODEL=llama-3.3-70b-versatile
 GROQ_API_KEY=gsk_xxxxxxxxxxxx
 OPENAI_API_KEY=sk-xxxxxxxxxxxx
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
+GEMINI_API_KEY=your_key_here
 ```
 
 Priority: **CLI flag > env var > config file > default**
@@ -237,12 +254,12 @@ Then register it in `src/adapters/index.ts` and open a PR. Contributions welcome
 
 ## comparison
 
-| tool        | install     | offline      | free tier  | streams | interactive |
-| ----------- | ----------- | ------------ | ---------- | ------- | ----------- |
-| **gitmuse** | `npm i -g`  | yes (Ollama) | yes (Groq) | yes     | yes         |
-| aicommits   | `npm i -g`  | no           | no         | no      | no          |
-| gpt-commit  | pip         | no           | no         | no      | no          |
-| commitgpt   | browser ext | no           | no         | no      | no          |
+| tool        | install     | offline      | free tier               | streams | interactive |
+| ----------- | ----------- | ------------ | ----------------------- | ------- | ----------- |
+| **gitmuse** | `npm i -g`  | yes (Ollama) | yes (Groq + Gemini)     | yes     | yes         |
+| aicommits   | `npm i -g`  | no           | no                      | no      | no          |
+| gpt-commit  | pip         | no           | no                      | no      | no          |
+| commitgpt   | browser ext | no           | no                      | no      | no          |
 
 ---
 
@@ -250,7 +267,7 @@ Then register it in `src/adapters/index.ts` and open a PR. Contributions welcome
 
 - Node.js 18 or higher
 - git
-- one of: Ollama running locally, or an API key for Groq / OpenAI / Anthropic
+- one of: Ollama running locally, or an API key for Groq / Gemini / OpenAI / Anthropic
 
 ---
 

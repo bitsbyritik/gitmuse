@@ -1,6 +1,25 @@
 {
   "name": "gitmuse",
-  "version": "0.1.0",
+  "version": "0.1.2",
+  "description": "AI-generated commit messages in seconds — free with Groq, offline with Ollama",
+  "homepage": "https://github.com/bitsbyritik/gitmuse#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bitsbyritik/gitmuse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bitsbyritik/gitmuse/issues"
+  },
+  "keywords": [
+    "git",
+    "ai",
+    "commit",
+    "cli",
+    "ollama",
+    "groq",
+    "openai",
+    "conventional-commits"
+  ],
   "type": "module",
   "engines": {
     "node": ">=18"

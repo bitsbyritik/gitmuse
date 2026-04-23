@@ -28,7 +28,7 @@ function getHooksDir(): string {
 }
 
 /** Installs a prepare-commit-msg hook that runs `gm --yes` on plain commits. */
-export async function installHook(): Promise<void> {
+export function installHook(): void {
   const hooksDir = getHooksDir();
   const hookPath = join(hooksDir, 'prepare-commit-msg');
 
@@ -57,7 +57,7 @@ export async function installHook(): Promise<void> {
 }
 
 /** Removes the gitmuse-managed prepare-commit-msg hook. */
-export async function uninstallHook(): Promise<void> {
+export function uninstallHook(): void {
   const hooksDir = getHooksDir();
   const hookPath = join(hooksDir, 'prepare-commit-msg');
 

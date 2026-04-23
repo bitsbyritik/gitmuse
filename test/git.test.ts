@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseCommitMessage } from '../src/prompt.js';
 
 // git.ts uses child_process — mock it to avoid needing a real git repo in CI
 vi.mock('child_process', () => ({
@@ -44,7 +43,7 @@ describe('getStagedDiff', () => {
 
   it('truncates diffs longer than maxLines', () => {
     mockedSpawnSync.mockReturnValue({ status: 0, stdout: '.git', stderr: '', pid: 1, output: [], signal: null });
-    const longDiff = Array.from({ length: 300 }, (_, i) => `line ${i}`).join('\n');
+    const longDiff = Array.from({ length: 300 }, (_, i) => `line ${String(i)}`).join('\n');
     mockedExecSync
       .mockReturnValueOnce(longDiff)   // git diff --cached
       .mockReturnValueOnce('main');    // git rev-parse --abbrev-ref HEAD

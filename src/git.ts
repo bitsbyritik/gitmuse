@@ -48,7 +48,7 @@ export function getStagedDiff(maxLines: number): DiffResult {
   const lines = raw.split('\n');
   const truncated = lines.length > maxLines;
   const diff = truncated
-    ? lines.slice(0, maxLines).join('\n') + '\n\n[...diff truncated at ' + maxLines + ' lines...]'
+    ? `${lines.slice(0, maxLines).join('\n')}\n\n[...diff truncated at ${String(maxLines)} lines...]`
     : raw;
 
   return {

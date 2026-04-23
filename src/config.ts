@@ -25,7 +25,7 @@ const store = new Conf<Partial<Config>>({ projectName: 'gitmuse' });
  * Priority: overrides (CLI flags) > env vars > stored file > code defaults.
  */
 export function getConfig(overrides: Partial<Config> = {}): Config {
-  const stored = store.store as Partial<Config>;
+  const stored = store.store;
 
   const envProvider = process.env['GITMUSE_PROVIDER'] as ProviderName | undefined;
   const envModel = process.env['GITMUSE_MODEL'];
@@ -96,11 +96,7 @@ export function saveConfig(partial: Partial<Config>): void {
 }
 
 /** Handler for `gm config <action> [key] [value]`. */
-export async function manageConfig(
-  action: string,
-  key?: string,
-  value?: string,
-): Promise<void> {
+export function manageConfig(action: string, key?: string, value?: string): void {
   switch (action) {
     case 'list': {
       const cfg = getConfig();
@@ -113,7 +109,13 @@ export async function manageConfig(
       // Support dot-notation (e.g. groq.apiKey) via conf
       const val = store.get(key as keyof Partial<Config>) ?? (getConfig() as unknown as Record<string, unknown>)[key];
       if (val === undefined) throw new ConfigError(`Unknown key: ${key}`);
-      console.log(typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val));
+      if (typeof val === 'object' && val !== null) {
+        console.log(JSON.stringify(val, null, 2));
+      } else if (typeof val === 'string') {
+        console.log(val);
+      } else {
+        console.log(JSON.stringify(val));
+      }
       break;
     }
 

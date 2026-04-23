@@ -20,6 +20,14 @@ export default tseslint.config(
     },
   },
   {
+    // Relax rules that don't apply cleanly to test helpers / vitest test bodies
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/no-dynamic-delete': 'off',
+    },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**'],
   },
 );

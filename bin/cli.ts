@@ -38,7 +38,11 @@ program
   .description('get, set, list, or reset config values')
   .action(async (action: string, key?: string, value?: string) => {
     const { manageConfig } = await import('../src/config.js');
-    await manageConfig(action, key, value).catch(handleFatalError);
+    try {
+      manageConfig(action, key, value);
+    } catch (err) {
+      handleFatalError(err);
+    }
   });
 
 program
@@ -46,7 +50,11 @@ program
   .description('install gitmuse as a git hook in the current repo')
   .action(async () => {
     const { installHook } = await import('../src/hooks.js');
-    await installHook().catch(handleFatalError);
+    try {
+      installHook();
+    } catch (err) {
+      handleFatalError(err);
+    }
   });
 
 program
@@ -54,7 +62,11 @@ program
   .description('remove the gitmuse git hook from the current repo')
   .action(async () => {
     const { uninstallHook } = await import('../src/hooks.js');
-    await uninstallHook().catch(handleFatalError);
+    try {
+      uninstallHook();
+    } catch (err) {
+      handleFatalError(err);
+    }
   });
 
 program.parseAsync().catch(handleFatalError);

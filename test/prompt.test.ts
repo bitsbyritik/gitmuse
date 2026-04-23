@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildPrompt, parseCommitMessage } from '../src/prompt.js';
-import type { Config, DiffResult } from '../src/types.js';
+import type { DiffResult } from '../src/types.js';
 import { DEFAULTS } from '../src/config.js';
 
 const diff: DiffResult = {

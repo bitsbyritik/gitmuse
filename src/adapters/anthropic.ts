@@ -16,17 +16,13 @@ export class AnthropicAdapter extends BaseAdapter {
 
   async *stream(prompt: string): AsyncIterable<string> {
     try {
-      const stream = this.client.messages.stream({
+      const msgStream = this.client.messages.stream({
         model: this.model,
         max_tokens: 512,
         messages: [{ role: 'user', content: prompt }],
       });
-
-      for await (const event of stream) {
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta.type === 'text_delta'
-        ) {
+      for await (const event of msgStream) {
+        if (event.type === 'content_block_delta') {
           yield event.delta.text;
         }
       }

@@ -36,7 +36,7 @@ export class OllamaAdapter extends BaseAdapter {
 
     if (!response.ok) {
       const text = await response.text().catch(() => response.statusText);
-      throw new ProviderError('ollama', `HTTP ${response.status}: ${text}`);
+      throw new ProviderError('ollama', `HTTP ${String(response.status)}: ${text}`);
     }
 
     if (!response.body) throw new ProviderError('ollama', 'Empty response body');
@@ -46,7 +46,7 @@ export class OllamaAdapter extends BaseAdapter {
     let buffer = '';
 
     try {
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
 

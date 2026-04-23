@@ -31,7 +31,7 @@ export class GroqAdapter extends BaseAdapter {
 
     try {
       for await (const chunk of response) {
-        const token = chunk.choices[0]?.delta?.content;
+        const token = chunk.choices[0]?.delta.content;
         if (token) yield token;
       }
     } catch (err) {

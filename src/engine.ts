@@ -74,7 +74,7 @@ export async function run(options: RunOptions): Promise<void> {
     }
 
     // Interactive TUI loop
-    while (true) {
+    for (;;) {
       const result = await showTui(currentMessage);
 
       if (result.action === 'abort') {

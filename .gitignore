@@ -1,0 +1,86 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build output
+dist/
+build/
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# env files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# test coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# cache
+.cache/
+.eslintcache
+.stylelintcache
+.prettiercache
+.turbo/
+
+# os
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+Session.vim
+.netrwhist
+
+# temp
+tmp/
+temp/
+*.tmp
+*.temp
+
+# npm
+.npmrc.local
+package-lock.json.bak
+
+# semantic-release
+.releaserc.local
+
+# gitmuse config (user's local config, not the project's)
+.gitmuse/

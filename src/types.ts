@@ -1,15 +1,49 @@
+export type ProviderName = 'ollama' | 'openai' | 'groq' | 'anthropic' | 'gemini' | 'custom';
+
+export interface OllamaConfig {
+  baseURL: string;
+  model: string;
+}
+
+export interface OpenAIConfig {
+  apiKey?: string;
+  model: string;
+}
+
+export interface GroqConfig {
+  apiKey?: string;
+  model: string;
+}
+
+export interface AnthropicConfig {
+  apiKey?: string;
+  model: string;
+}
+
+export interface GeminiConfig {
+  apiKey?: string;
+  model: string;
+}
+
+export interface CustomConfig {
+  baseURL?: string;
+  apiKey?: string;
+  model?: string;
+}
+
 export interface Config {
-  provider: "ollama" | "openai" | "groq" | "anthropic" | "custom";
+  provider: ProviderName;
   model?: string;
   maxDiffLines: number;
   emoji: boolean;
   autoConfirm: boolean;
   language: string;
-  ollama: { baseURL: string; model: string };
-  openai: { apiKey?: string; model: string };
-  groq: { apiKey?: string; model: string };
-  anthropic: { apiKey?: string; model: string };
-  custom: { baseURL?: string; apiKey?: string; model?: string };
+  ollama: OllamaConfig;
+  openai: OpenAIConfig;
+  groq: GroqConfig;
+  anthropic: AnthropicConfig;
+  gemini: GeminiConfig;
+  custom: CustomConfig;
 }
 
 export interface DiffResult {
@@ -31,4 +65,11 @@ export interface RunOptions {
   retry?: boolean;
   provider?: string;
   silent?: boolean;
+}
+
+export type TuiAction = 'commit' | 'edit' | 'retry' | 'abort';
+
+export interface TuiResult {
+  action: TuiAction;
+  message: string;
 }

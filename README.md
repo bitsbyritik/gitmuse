@@ -163,14 +163,14 @@ gm config set anthropic.model claude-haiku-4-5
 ```bash
 gm config set provider gemini
 gm config set gemini.apiKey YOUR_KEY_HERE   # free at aistudio.google.com
-gm config set gemini.model gemini-2.0-flash # optional — this is the default
+gm config set gemini.model gemini-2.5-flash # optional — this is the default
 ```
 
 Available free-tier models:
 
 | model | rate limit | notes |
 | ----- | ---------- | ----- |
-| `gemini-2.0-flash` | 15 req/min | default — best balance of speed + quality |
+| `gemini-2.5-flash` | 10 req/min | default — best balance of speed + quality |
 | `gemini-1.5-flash` | 15 req/min | slightly older, still excellent |
 | `gemini-1.5-pro`   | 2 req/min  | higher quality, stricter limits |
 

@@ -32,7 +32,42 @@ npm run test        # Vitest
 5. Add the provider choice and API key prompt to `src/setup.ts`
 6. Update `README.md` — provider setup section, env-vars block, comparison table
 
+For agents (Claude Code and friends) see *adding a CLI agent* below instead — they need no
+adapter of their own.
+
 Look at `src/adapters/groq.ts` as the simplest reference implementation.
+
+## adding a CLI agent
+
+An **agent** is a coding CLI the user is already signed in to (Claude Code today, Codex CLI next).
+gitmuse spawns it instead of holding a key — so there is no credential to store, and no OAuth flow
+to reimplement. `src/adapters/cli-agent.ts` does the spawning, streaming, timeout and error
+handling for every agent, so adding one is a single definition file:
+
+1. Create `src/agents/<name>.ts` exporting a `CliAgent` (see `src/agents/types.ts` for the contract):
+   - `versionArgs` — how to detect the binary
+   - `authArgs` + `parseAuth` — how the CLI reports who is signed in (offline, no request)
+   - `buildInvocation(model, tier)` — argv for a one-shot, non-interactive completion.
+     `full` may use any flag; `basic` must use only flags the CLI has had for a long time —
+     it is retried automatically when an older install rejects a newer flag
+   - `parseEvent(line)` — turn one line of stdout into `text` / `error` / `end`
+2. Add the id to `AgentProviderName` in `src/types.ts`
+3. Push it into `CLI_AGENTS` in `src/agents/index.ts`, and drop it from `PLANNED_AGENTS`
+
+That is all — `gm connect`, `gm setup`, config (`agents.<id>.*`), the adapter and the error
+messages pick it up from the registry. Use `src/agents/claude-code.ts` as the reference.
+
+**Ground rule:** never read, copy, or reuse another tool's credential files or tokens. gitmuse
+only ever *runs the agent's own CLI* and lets that CLI authenticate itself.
+
+## change detection
+
+`src/classify.ts` decides what kind of file a path is (source / test / docs / config / deps / ci /
+generated / asset) and what the file mix already proves about the commit type. `src/git.ts` spends
+the `maxDiffLines` budget across files using that, so noise never crowds out the real change.
+
+If you add or fix a pattern there, add a case to `test/classify.test.ts` — the table format makes it
+a one-line change, and it is the cheapest place in the codebase to prevent a wrong commit type.
 
 ## code style
 

@@ -15,6 +15,7 @@ export const DEFAULTS: Config = {
   anthropic: { apiKey: undefined, model: 'claude-haiku-4-5' },
   gemini: { apiKey: undefined, model: 'gemini-2.5-flash' },
   custom: { baseURL: undefined, apiKey: undefined, model: undefined },
+  agents: {},
 };
 
 // No defaults passed — so store.has() reliably detects first run.
@@ -77,6 +78,7 @@ export function getConfig(overrides: Partial<Config> = {}): Config {
         stored.gemini?.apiKey,
     },
     custom: { ...DEFAULTS.custom, ...stored.custom, ...overrides.custom },
+    agents: { ...DEFAULTS.agents, ...stored.agents, ...overrides.agents },
   };
 }
 

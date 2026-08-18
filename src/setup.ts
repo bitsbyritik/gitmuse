@@ -4,12 +4,13 @@ import { saveConfig } from './config.js';
 import { logger } from './logger.js';
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
-  ollama: 'Ollama    — local, free, offline (requires: ollama serve)',
-  groq: 'Groq      — cloud, free tier, very fast',
-  gemini: 'Gemini    — cloud, free tier (aistudio.google.com — no credit card)',
-  openai: 'OpenAI    — gpt-4o-mini, paid',
-  anthropic: 'Anthropic — claude-haiku, paid',
-  custom: 'Custom    — any OpenAI-compatible endpoint',
+  'claude-code': 'Claude Code — runs on your Claude subscription (no API key)',
+  ollama: 'Ollama      — local, free, offline (requires: ollama serve)',
+  groq: 'Groq        — cloud, free tier, very fast',
+  gemini: 'Gemini      — cloud, free tier (aistudio.google.com — no credit card)',
+  openai: 'OpenAI      — gpt-4o-mini, paid',
+  anthropic: 'Anthropic   — claude-haiku, paid',
+  custom: 'Custom      — any OpenAI-compatible endpoint',
 };
 
 /** Interactive first-run wizard. Persists provider + credentials on completion. */
@@ -26,6 +27,21 @@ export async function setup(): Promise<void> {
   const partial: Partial<Config> = { provider };
 
   switch (provider) {
+    case 'claude-code': {
+      // Agents are connected, not keyed — hand off to the connect flow, which
+      // finds the CLI, checks the sign-in, and saves the provider itself.
+      const { findAgent } = await import('./agents/index.js');
+      const { connectAgent } = await import('./connect.js');
+      const agent = findAgent('claude-code');
+      const connected = agent ? await connectAgent(agent) : false;
+
+      if (!connected) {
+        logger.warn('Setup stopped — provider unchanged. Run `gm connect` to retry.');
+        return;
+      }
+      break;
+    }
+
     case 'groq': {
       const apiKey = await input({
         message: 'Groq API key (free at console.groq.com):',

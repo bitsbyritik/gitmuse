@@ -24,9 +24,14 @@ npm install -g gitmuse
 ## features
 
 - **zero config to start** — works with Ollama out of the box, no API key needed
+- **connect an agent you already pay for** — `gm connect` borrows Claude Code, so a Claude
+  Pro/Max subscription generates your commit messages with no API key at all
 - **free cloud tier** — Groq's free API gives you 14,000 requests/day at zero cost
 - **any provider** — Ollama, OpenAI, Groq, Anthropic, Gemini, or any OpenAI-compatible endpoint
-- **conventional commits** — always generates `feat:`, `fix:`, `chore:` format
+- **conventional commits** — picks the right type per diff (`fix`, `docs`, `refactor`, …), with a
+  fixed emoji per type when `emoji` is on
+- **reads the change, not just the diff** — file statuses, renames, churn and file kinds are sent as
+  evidence, and lockfiles/build output never crowd the real change out of the prompt
 - **live streaming** — watch tokens appear as they generate
 - **interactive TUI** — edit, regenerate, or confirm before anything is committed
 - **git hook support** — `gm install` wires it into your repo permanently
@@ -38,13 +43,28 @@ npm install -g gitmuse
 - **works offline** — Ollama runs entirely on your machine; your diff never leaves
 - **tokens stream live** — you see the message build word by word, not a spinner then a wall of text
 - **your keys, your data** — gitmuse never proxies your requests; it calls provider APIs directly from your machine
-- **6 providers, one command to switch** — `gm --provider gemini` overrides for a single run without touching config
+- **6 providers + connected agents, one command to switch** — `gm --provider gemini` overrides for a single run without touching config
+- **no credential handling for agents** — gitmuse never reads another tool's tokens; it runs that tool's own CLI, which authenticates itself
 
 ---
 
 ## quick start
 
-### option 1 — fully free with Groq (recommended)
+### option 1 — connect Claude Code (no API key)
+
+Already signed in to Claude Code with a Claude Pro/Max subscription? Borrow it:
+
+```bash
+npm install -g gitmuse
+gm connect          # finds Claude Code, checks your sign-in, sends a test request
+
+git add .
+gm
+```
+
+Nothing is stored but your choice of agent and model — Claude Code keeps owning the credential.
+
+### option 2 — fully free with Groq
 
 ```bash
 npm install -g gitmuse
@@ -57,7 +77,7 @@ git add .
 gm
 ```
 
-### option 2 — 100% offline with Ollama
+### option 3 — 100% offline with Ollama
 
 ```bash
 # install Ollama from ollama.com, then:
@@ -67,7 +87,7 @@ npm install -g gitmuse
 gm
 ```
 
-### option 3 — first run wizard
+### option 4 — first run wizard
 
 ```bash
 npm install -g gitmuse
@@ -99,6 +119,11 @@ gm --dry-run
 
 # use a specific provider for this run
 gm --provider openai
+
+# connect / re-check a local coding agent
+gm connect
+gm connect claude-code --model sonnet
+gm connect --list
 
 # install as a git hook (runs on every git commit)
 gm install
@@ -132,10 +157,18 @@ gm config reset
 | -------------- | ---------------- | ---------------------------- |
 | `provider`     | `ollama`         | AI provider to use           |
 | `model`        | provider default | model override               |
-| `maxDiffLines` | `200`            | truncate large diffs         |
+| `maxDiffLines` | `200`            | diff line budget (see below) |
 | `emoji`        | `false`          | add emoji to commit type     |
 | `autoConfirm`  | `false`          | skip TUI, commit immediately |
 | `language`     | `en`             | commit message language      |
+
+Connected agents store their settings under `agents.<id>`:
+
+| key                          | default   | description                             |
+| ---------------------------- | --------- | --------------------------------------- |
+| `agents.claude-code.model`   | `sonnet`  | model to ask the agent for              |
+| `agents.claude-code.command` | `claude`  | path/name of the executable to spawn    |
+| `agents.claude-code.timeoutMs` | `120000` | how long to wait for the agent to reply |
 
 ### provider setup
 
@@ -195,6 +228,87 @@ gm config set custom.baseURL http://localhost:1234/v1
 gm config set custom.apiKey optional-key
 gm config set custom.model your-model-name
 ```
+
+---
+
+## how it reads your changes
+
+Before any prompt is built, gitmuse asks git three questions — `--name-status -M` (what happened to
+each file, including renames), `--numstat -M` (churn, and which files are binary), and the diff
+itself — then classifies every path as source, test, docs, config, deps, ci, generated or asset.
+
+That buys two things:
+
+**1. The budget goes to the code that matters.** `maxDiffLines` is a budget shared *between* files,
+not a blunt cut at line 200. Lockfiles, `dist/`, snapshots and binaries are reduced to a one-line
+placeholder; the rest is split fairly, so a 2,000-line `package-lock.json` can no longer push your
+actual fix out of the prompt:
+
+```
+3 files changed, +606 −601
+- M  package-lock.json     +600 −600  [deps, diff trimmed]
+- M  src/auth/session.js   +2 −1      [source]
+- A  test/session.test.js  +4 −0      [test]
+```
+
+**2. The model is told what the files already prove.** Docs-only, tests-only, CI-only, deps-only and
+pure-rename commits are pinned to a type before the model reads a line of code, and a scope is
+guessed from the shared directory:
+
+```
+- every changed file is documentation → `docs` — use it unless the diff clearly shows otherwise
+- likely scope: `auth` — use it only if it fits the change
+- package-lock.json is generated/dependency noise — describe the source change, not this
+```
+
+The result for the example above: `🐛 fix(auth): treat missing sessions as expired` — not
+`chore(deps): update lockfile`.
+
+---
+
+## connected agents (no API key)
+
+Instead of giving gitmuse a key, you can point it at a coding CLI you are **already signed in to**.
+gitmuse spawns that CLI in non-interactive mode and streams back what it prints.
+
+```bash
+gm connect            # pick an agent, sign in if needed, pick a model, test it
+gm connect --list     # who is installed, who is signed in, what is in use
+```
+
+```
+  Agents
+
+  ●  Claude Code   signed in · you@example.com · pro · v2.1.234  ← in use
+  ·  Codex CLI     coming soon — contributions welcome
+```
+
+**Supported today**
+
+| agent           | vendor    | runs on                            | install                                  |
+| --------------- | --------- | ---------------------------------- | ---------------------------------------- |
+| **Claude Code** | Anthropic | your Claude Pro/Max subscription (or its API key, if that is how you set it up) | `npm install -g @anthropic-ai/claude-code` |
+
+Codex CLI is next — the registry in `src/agents/index.ts` takes one definition file per agent, so
+adding your own is a small PR (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent)).
+
+**How it works**
+
+`gm connect` runs `claude --version` to find the binary, `claude auth status` to see who is signed
+in, then sends one tiny prompt to prove the whole path works before saving anything. At commit
+time gitmuse runs the agent with `-p` (print mode) outside your repo, so your project's agent
+instructions, hooks and MCP servers never enter the request.
+
+**gitmuse never touches your credentials.** It does not read `~/.claude`, does not copy tokens, and
+stores no secret of its own — the agent's CLI authenticates itself, exactly as it does when you use
+it directly. (Extracting a subscription token to call the API yourself is against Anthropic's terms;
+this feature exists so nobody needs to.)
+
+**Trade-offs**
+
+- **slower** — ~5–10s, because a full agent CLI boots per commit (vs ~1–2s for a direct API call)
+- **counts against your plan** — the same rate limits as your interactive sessions
+- **local only** — CI has no signed-in CLI, so keep an API-key provider configured there
 
 ---
 
@@ -262,6 +376,43 @@ export class MyProviderAdapter extends BaseAdapter {
 ```
 
 Then register it in `src/adapters/index.ts` and open a PR. Contributions welcome.
+
+### adding an agent
+
+Agents (Claude Code, Codex CLI, …) need no adapter — `src/adapters/cli-agent.ts` already handles
+spawning, streaming, timeouts and errors for all of them. You write one definition:
+
+```typescript
+// src/agents/my-agent.ts
+import type { CliAgent } from './types.js';
+
+export const myAgent: CliAgent = {
+  id: 'my-agent',
+  name: 'My Agent',
+  vendor: 'Someone',
+  tagline: 'runs on your Someone subscription',
+  command: 'myagent',
+  models: ['default'],
+  install: 'npm install -g myagent',
+  loginCommand: 'myagent login',
+  docsUrl: 'https://example.com/docs',
+
+  versionArgs: ['--version'],
+  authArgs: ['auth', 'status', '--json'],
+  parseAuth: (out) => ({ connected: JSON.parse(out).loggedIn === true }),
+
+  buildInvocation: (model, tier) => ({
+    args: ['--print', '--model', model],
+    format: 'text',
+  }),
+
+  parseEvent: (line) => ({ type: 'text', text: line }),
+};
+```
+
+Add the id to `AgentProviderName` in `src/types.ts`, push the definition into `CLI_AGENTS` in
+`src/agents/index.ts`, and `gm connect` lists it. Full checklist in
+[CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent).
 
 ---
 

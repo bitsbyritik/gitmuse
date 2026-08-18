@@ -34,6 +34,30 @@ program
   });
 
 program
+  .command('connect [agent]')
+  .description('connect a coding agent you are signed in to (e.g. claude-code)')
+  .option('-m, --model <model>', 'model to request from the agent')
+  .option('-l, --list', 'show agent status and exit')
+  .option('--no-test', 'skip the live test request')
+  .option('-y, --yes', 'never prompt — for scripts and CI')
+  .action(async (agent: string | undefined, options: Record<string, unknown>) => {
+    const { connect, listAgents } = await import('../src/connect.js');
+    try {
+      if (options['list']) {
+        listAgents();
+        return;
+      }
+      await connect(agent, {
+        model: options['model'] as string | undefined,
+        noTest: options['test'] === false,
+        yes: Boolean(options['yes']),
+      });
+    } catch (err) {
+      handleFatalError(err);
+    }
+  });
+
+program
   .command('config <action> [key] [value]')
   .description('get, set, list, or reset config values')
   .action(async (action: string, key?: string, value?: string) => {

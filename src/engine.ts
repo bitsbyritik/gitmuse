@@ -1,8 +1,8 @@
 import ora from 'ora';
 import type { Config, RunOptions } from './types.js';
 import { getConfig, isFirstRun } from './config.js';
-import { getStagedDiff, getStagedFiles, commitWithMessage } from './git.js';
-import { buildPrompt, parseCommitMessage } from './prompt.js';
+import { getStagedDiff, commitWithMessage } from './git.js';
+import { buildPrompt, parseCommitMessage, normalizeCommitMessage } from './prompt.js';
 import { resolveAdapter } from './adapters/index.js';
 import { streamToTerminal, showTui } from './tui.js';
 import { handleFatalError } from './errors.js';
@@ -44,8 +44,12 @@ export async function run(options: RunOptions): Promise<void> {
 
     // Read staged diff
     const diff = getStagedDiff(config.maxDiffLines);
-    const files = getStagedFiles();
-    logger.dim(`  Staged: ${files.join(', ')}`);
+    logger.dim(
+      `  Staged: ${diff.files
+        .map((f) => `${f.status === 'modified' ? '' : `${f.status} `}${f.path}`)
+        .join(', ')}`,
+    );
+    if (diff.trimmed) logger.dim('  (large diff — noisy files trimmed for the model)');
 
     // Build prompt once — reused on retry
     const prompt = buildPrompt(diff, config);
@@ -60,7 +64,10 @@ export async function run(options: RunOptions): Promise<void> {
     }).start();
 
     const firstStream = withSpinnerStop(adapter.stream(prompt), spinner);
-    let currentMessage = parseCommitMessage(await streamToTerminal(firstStream)).raw;
+    let currentMessage = normalizeCommitMessage(
+      await streamToTerminal(firstStream),
+      config.emoji,
+    ).raw;
 
     // --yes / autoConfirm: skip TUI
     if (config.autoConfirm) {
@@ -88,7 +95,10 @@ export async function run(options: RunOptions): Promise<void> {
           isSilent: options.silent,
         }).start();
         const retryStream = withSpinnerStop(adapter.stream(prompt), retrySpinner);
-        currentMessage = parseCommitMessage(await streamToTerminal(retryStream)).raw;
+        currentMessage = normalizeCommitMessage(
+          await streamToTerminal(retryStream),
+          config.emoji,
+        ).raw;
         continue;
       }
 

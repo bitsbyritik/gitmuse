@@ -1,12 +1,25 @@
 import type { Config } from '../types.js';
 import type { BaseAdapter } from './base.js';
 import { ConfigError } from '../errors.js';
+import { findAgent, isAgentProvider } from '../agents/index.js';
 
 /**
  * Instantiates and returns the correct adapter for config.provider.
  * Dynamic imports keep unused provider SDKs out of the startup bundle.
  */
 export async function resolveAdapter(config: Config): Promise<BaseAdapter> {
+  // Connected local agents (Claude Code, …) all share one adapter.
+  if (isAgentProvider(config.provider)) {
+    const agent = findAgent(config.provider);
+    if (!agent) {
+      throw new ConfigError(
+        `Provider "${config.provider}" is not a registered agent. Run \`gm connect\`.`,
+      );
+    }
+    const { CliAgentAdapter } = await import('./cli-agent.js');
+    return new CliAgentAdapter(agent, config.agents[config.provider] ?? {});
+  }
+
   switch (config.provider) {
     case 'ollama': {
       const { OllamaAdapter } = await import('./ollama.js');

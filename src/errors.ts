@@ -66,6 +66,27 @@ export class MissingApiKeyError extends GitMuseError {
   }
 }
 
+export class AgentNotInstalledError extends GitMuseError {
+  constructor(name: string, command: string, install: string) {
+    super(
+      `${name} is not installed — "${command}" was not found on your PATH.\n` +
+        `    Install it with: ${install}`,
+      'AGENT_NOT_INSTALLED',
+    );
+    this.name = 'AgentNotInstalledError';
+  }
+}
+
+export class AgentNotConnectedError extends GitMuseError {
+  constructor(name: string, loginCommand: string) {
+    super(
+      `${name} is installed but not signed in.\n    Sign in with: ${loginCommand}`,
+      'AGENT_NOT_CONNECTED',
+    );
+    this.name = 'AgentNotConnectedError';
+  }
+}
+
 /**
  * Prints a friendly error message to stderr and exits with code 1.
  * Use as the top-level catch handler in every command.

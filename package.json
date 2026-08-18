@@ -1,6 +1,6 @@
 {
   "name": "gitmuse",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "AI-generated commit messages in seconds. Free, local, or cloud — your choice.",
   "homepage": "https://github.com/bitsbyritik/gitmuse#readme",
   "repository": {

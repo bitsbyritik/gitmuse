@@ -5,7 +5,7 @@
   "homepage": "https://github.com/bitsbyritik/gitmuse#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bitsbyritik/gitmuse.git"
+    "url": "git+https://github.com/bitsbyritik/gitmuse.git"
   },
   "bugs": {
     "url": "https://github.com/bitsbyritik/gitmuse/issues"
@@ -37,8 +37,8 @@
     "node": ">=18"
   },
   "bin": {
-    "gitmuse": "./dist/cli.js",
-    "gm": "./dist/cli.js"
+    "gitmuse": "dist/cli.js",
+    "gm": "dist/cli.js"
   },
   "files": [
     "dist",

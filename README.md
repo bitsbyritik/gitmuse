@@ -1,6 +1,6 @@
 # gitmuse
 
-> AI-generated commit messages in seconds. Free, local, or cloud — your choice.
+> AI-generated commit messages in seconds. Free, local, or Claude Code, Codex Subscription — your choice.
 
 [![npm version](https://img.shields.io/npm/v/gitmuse)](https://www.npmjs.com/package/gitmuse)
 [![npm downloads](https://img.shields.io/npm/dm/gitmuse)](https://www.npmjs.com/package/gitmuse)
@@ -171,17 +171,17 @@ gm config reset
 
 Connected agents store their settings under `agents.<id>`:
 
-| key                            | default   | description                             |
-| ------------------------------ | --------- | --------------------------------------- |
-| `agents.claude-code.model`     | `sonnet`  | model to ask the agent for              |
-| `agents.claude-code.command`   | `claude`  | path/name of the executable to spawn    |
-| `agents.claude-code.timeoutMs` | `120000`  | how long to wait for the agent to reply |
-| `agents.codex.model`           | `default` | model to ask for; `default` names none  |
-| `agents.codex.command`         | `codex`   | path/name of the executable to spawn    |
-| `agents.codex.timeoutMs`       | `120000`  | how long to wait for the agent to reply |
-| `agents.cursor.model`          | `auto`    | model to ask the agent for              |
-| `agents.cursor.command`        | `cursor-agent` | path/name of the executable to spawn |
-| `agents.cursor.timeoutMs`      | `120000`  | how long to wait for the agent to reply |
+| key                            | default        | description                             |
+| ------------------------------ | -------------- | --------------------------------------- |
+| `agents.claude-code.model`     | `sonnet`       | model to ask the agent for              |
+| `agents.claude-code.command`   | `claude`       | path/name of the executable to spawn    |
+| `agents.claude-code.timeoutMs` | `120000`       | how long to wait for the agent to reply |
+| `agents.codex.model`           | `default`      | model to ask for; `default` names none  |
+| `agents.codex.command`         | `codex`        | path/name of the executable to spawn    |
+| `agents.codex.timeoutMs`       | `120000`       | how long to wait for the agent to reply |
+| `agents.cursor.model`          | `auto`         | model to ask the agent for              |
+| `agents.cursor.command`        | `cursor-agent` | path/name of the executable to spawn    |
+| `agents.cursor.timeoutMs`      | `120000`       | how long to wait for the agent to reply |
 
 `agents.codex.model` is `default` on purpose: which slugs a Codex account may request depends on the
 plan and the CLI version, so gitmuse passes no `--model` unless you name one.
@@ -258,7 +258,7 @@ itself — then classifies every path as source, test, docs, config, deps, ci, g
 
 That buys two things:
 
-**1. The budget goes to the code that matters.** `maxDiffLines` is a budget shared *between* files,
+**1. The budget goes to the code that matters.** `maxDiffLines` is a budget shared _between_ files,
 not a blunt cut at line 200. Lockfiles, `dist/`, snapshots and binaries are reduced to a one-line
 placeholder; the rest is split fairly, so a 2,000-line `package-lock.json` can no longer push your
 actual fix out of the prompt:
@@ -305,32 +305,32 @@ gm connect --list     # who is installed, who is signed in, what is in use
 
 **Supported today**
 
-| agent           | vendor    | runs on                                                                           | install                                    |
-| --------------- | --------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
-| **Claude Code** | Anthropic | your Claude Pro/Max subscription (or its API key, if that is how you set it up)     | `npm install -g @anthropic-ai/claude-code` |
-| **Codex CLI**   | OpenAI    | your ChatGPT Plus/Pro/Business plan (or its API key, if that is how you set it up)  | `npm install -g @openai/codex`             |
-| **Cursor CLI**  | Cursor    | your Cursor subscription (or its API key, if that is how you set it up)             | `curl https://cursor.com/install -fsS \| bash` |
+| agent           | vendor    | runs on                                                                            | install                                        |
+| --------------- | --------- | ---------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Claude Code** | Anthropic | your Claude Pro/Max subscription (or its API key, if that is how you set it up)    | `npm install -g @anthropic-ai/claude-code`     |
+| **Codex CLI**   | OpenAI    | your ChatGPT Plus/Pro/Business plan (or its API key, if that is how you set it up) | `npm install -g @openai/codex`                 |
+| **Cursor CLI**  | Cursor    | your Cursor subscription (or its API key, if that is how you set it up)            | `curl https://cursor.com/install -fsS \| bash` |
 
 The registry in `src/agents/index.ts` takes one definition file per agent, so adding another is a
 small PR (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent)).
 
 **How it works**
 
-*Detection.* `gm connect` looks for each agent's executable across your PATH, and then across the
+_Detection._ `gm connect` looks for each agent's executable across your PATH, and then across the
 directories these installers actually write to (`~/.local/bin`, `~/.claude/local`, `~/.bun/bin`,
 Homebrew, …). That last part matters: a git hook or a GUI-launched terminal often has a thinner PATH
 than your shell, and "not installed" is the wrong answer when the binary is right there. When one
 turns up off PATH, gitmuse pins its absolute path in config so every later run finds it too.
 
-*Sign-in.* Each agent's own status command answers who you are — `claude auth status --json`,
+_Sign-in._ Each agent's own status command answers who you are — `claude auth status --json`,
 `codex login status`, `cursor-agent status --format json`. All the probes run concurrently, because
 some of these CLIs take seconds just to boot.
 
-*Models.* Agents that can list their catalogue are asked for it, so you pick from what your account
+_Models._ Agents that can list their catalogue are asked for it, so you pick from what your account
 may actually run rather than a list hardcoded here — Cursor reports 200+ models, which is why long
 lists get a type-to-filter prompt. Agents with no such command fall back to gitmuse's defaults.
 
-*Generating.* At commit time gitmuse runs the agent non-interactively (`claude -p`,
+_Generating._ At commit time gitmuse runs the agent non-interactively (`claude -p`,
 `codex exec --json`, `cursor-agent -p`) from a temp dir, not your repo, so your project's agent
 instructions, hooks and MCP servers never enter the request. Codex runs in its `read-only` sandbox
 and Cursor in `--mode ask`, since writing a commit message needs no write access to anything.
@@ -516,13 +516,13 @@ Add the id to `AgentProviderName` in `src/types.ts`, push the definition into `C
 
 ## comparison
 
-| tool            | install     | offline      | free tier           | streams | interactive | providers |
-| --------------- | ----------- | ------------ | ------------------- | ------- | ----------- | --------- |
-| **gitmuse**     | `npm i -g`  | yes (Ollama) | yes (Groq + Gemini) | yes     | yes         | 6         |
-| opencommit      | `npm i -g`  | no           | no                  | no      | no          | 3         |
-| aicommits       | `npm i -g`  | no           | no                  | no      | no          | 1         |
-| gpt-commit      | pip         | no           | no                  | no      | no          | 1         |
-| commitgpt       | browser ext | no           | no                  | no      | no          | 1         |
+| tool        | install     | offline      | free tier           | streams | interactive | providers |
+| ----------- | ----------- | ------------ | ------------------- | ------- | ----------- | --------- |
+| **gitmuse** | `npm i -g`  | yes (Ollama) | yes (Groq + Gemini) | yes     | yes         | 6         |
+| opencommit  | `npm i -g`  | no           | no                  | no      | no          | 3         |
+| aicommits   | `npm i -g`  | no           | no                  | no      | no          | 1         |
+| gpt-commit  | pip         | no           | no                  | no      | no          | 1         |
+| commitgpt   | browser ext | no           | no                  | no      | no          | 1         |
 
 ---
 

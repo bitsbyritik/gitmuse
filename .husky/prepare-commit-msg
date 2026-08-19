@@ -1,0 +1,25 @@
+#!/bin/sh
+# gitmuse-managed-hook
+# gitmuse-hook-version: 2
+# Installed by gitmuse. Remove with: gm uninstall
+#
+# $1 is the file git will take the commit message from.
+# $2 says where that message came from — and anything with a source already has
+# one (-m, --amend, merge, squash, a template), so only a plain `git commit`
+# gets a generated message.
+if [ -n "$2" ]; then
+  exit 0
+fi
+
+if ! command -v gm >/dev/null 2>&1; then
+  echo "gitmuse: 'gm' is not on PATH — leaving the commit message to you." >&2
+  exit 0
+fi
+
+# Never block a commit. If generation fails you still get your editor, with
+# whatever git had already put in the file.
+if ! gm --write "$1"; then
+  echo "gitmuse: no message generated — write one yourself." >&2
+  echo "gitmuse: if that said 'unknown option --write', upgrade: npm i -g gitmuse" >&2
+fi
+exit 0

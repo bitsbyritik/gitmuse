@@ -34,7 +34,7 @@ npm install -g gitmuse
   evidence, and lockfiles/build output never crowd the real change out of the prompt
 - **live streaming** — watch tokens appear as they generate
 - **interactive TUI** — edit, regenerate, or confirm before anything is committed
-- **git hook support** — `gm install` wires it into your repo permanently
+- **git hook support** — `gm install` fills in the message on every `git commit` (husky-aware)
 - **tiny footprint** — single ESM bundle, Node 18+, no native deps
 
 ## why gitmuse
@@ -129,7 +129,7 @@ gm connect codex --model gpt-5.5
 gm connect cursor --model composer-2.5
 gm connect --list
 
-# install as a git hook (runs on every git commit)
+# install as a git hook (fills in the message on every plain `git commit`)
 gm install
 ```
 
@@ -368,13 +368,26 @@ Priority: **CLI flag > env var > config file > default**
 
 ## git hook
 
-Install once per repo and `git commit` triggers `gitmuse` automatically:
+Install once per repo, and a plain `git commit` opens your editor with the message already written:
 
 ```bash
 gm install
 ```
 
-This writes a `prepare-commit-msg` hook to `.git/hooks/`. Works with any git workflow — `git commit`, IDE git panels, GitLens, etc.
+You still see and approve the message — the hook fills it in, git commits it. Edit it, or delete it
+and write your own; nothing is committed until you save and close.
+
+**Where it goes.** `gm install` asks git where it actually looks for hooks (`core.hooksPath`), not
+just `.git/hooks`. In a repo using husky it installs to `.husky/prepare-commit-msg`, alongside your
+other husky hooks, because husky regenerates `.husky/_` and the files in there only delegate
+upwards. Committing that file shares the hook with everyone on the repo — leave it untracked if you
+would rather it stayed yours.
+
+**What it skips.** Anything that already has a message: `git commit -m`, `--amend`, merges, squashes
+and commit templates. Only a plain `git commit` gets a generated one.
+
+**It cannot block a commit.** If `gm` is missing, misconfigured or fails, the hook says so on stderr
+and exits cleanly — git opens your editor as it always would.
 
 To remove:
 

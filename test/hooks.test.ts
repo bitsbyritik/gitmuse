@@ -1,0 +1,161 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { execaSync } from 'execa';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { installHook, uninstallHook, writeMessageFile } from '../src/hooks.js';
+import { HookError } from '../src/errors.js';
+
+let repo: string;
+
+/** A throwaway git repo, entered so hooks.ts resolves paths against it. */
+function makeRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'gitmuse-hooks-'));
+  execaSync('git', ['init', '-q'], { cwd: dir });
+  return dir;
+}
+
+/** Recreates husky's layout: real hooks in `.husky`, shims in `.husky/_`. */
+function makeHusky(dir: string): void {
+  mkdirSync(join(dir, '.husky', '_'), { recursive: true });
+  writeFileSync(join(dir, '.husky', '_', 'h'), '#!/usr/bin/env sh\n', 'utf8');
+  execaSync('git', ['config', 'core.hooksPath', '.husky/_'], { cwd: dir });
+}
+
+beforeEach(() => {
+  repo = makeRepo();
+});
+
+afterEach(() => {
+  rmSync(repo, { recursive: true, force: true });
+});
+
+describe('installHook', () => {
+  it('installs into .git/hooks in a plain repo', () => {
+    installHook(repo);
+    expect(existsSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'))).toBe(true);
+  });
+
+  it('follows core.hooksPath instead of assuming .git/hooks', () => {
+    const shared = join(repo, 'githooks');
+    mkdirSync(shared);
+    execaSync('git', ['config', 'core.hooksPath', 'githooks'], { cwd: repo });
+
+    installHook(repo);
+
+    expect(existsSync(join(shared, 'prepare-commit-msg'))).toBe(true);
+    expect(existsSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'))).toBe(false);
+  });
+
+  it('installs beside husky\'s own hooks, not inside the dir husky regenerates', () => {
+    makeHusky(repo);
+
+    installHook(repo);
+
+    expect(existsSync(join(repo, '.husky', 'prepare-commit-msg'))).toBe(true);
+    expect(existsSync(join(repo, '.husky', '_', 'prepare-commit-msg'))).toBe(false);
+  });
+
+  it('replaces a hook left by an older gitmuse', () => {
+    const hookPath = join(repo, '.git', 'hooks', 'prepare-commit-msg');
+    writeFileSync(
+      hookPath,
+      '#!/bin/sh\n# gitmuse-managed-hook\nif [ -z "$2" ]; then\n  gm --yes\nfi\n',
+      'utf8',
+    );
+
+    installHook(repo);
+
+    const updated = readFileSync(hookPath, 'utf8');
+    expect(updated).toContain('gm --write "$1"');
+    expect(updated).not.toContain('gm --yes');
+  });
+
+  it('refuses to overwrite a hook it did not write', () => {
+    writeFileSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'), '#!/bin/sh\necho mine\n');
+    expect(() => {
+      installHook(repo);
+    }).toThrow(HookError);
+  });
+});
+
+describe('the installed hook script', () => {
+  it('hands the message to git rather than committing itself', () => {
+    installHook(repo);
+    const script = readFileSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'), 'utf8');
+
+    // A nested `git commit` here cannot lock HEAD — that was the old bug.
+    expect(script).not.toMatch(/gm\s+--yes/);
+    expect(script).toContain('gm --write "$1"');
+  });
+
+  it('skips every commit that already has a message', () => {
+    installHook(repo);
+    const script = readFileSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'), 'utf8');
+    expect(script).toContain('if [ -n "$2" ]; then\n  exit 0\nfi');
+  });
+
+  it('cannot block a commit', () => {
+    installHook(repo);
+    const script = readFileSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'), 'utf8');
+    // Both the missing-binary path and a failed run must fall through to exit 0.
+    expect(script).toContain('if ! gm --write "$1"; then');
+    expect(script).not.toMatch(/^\s*gm --write .*[^n]$/m); // never an unguarded call
+    expect(script.trimEnd().endsWith('exit 0')).toBe(true);
+  });
+});
+
+describe('uninstallHook', () => {
+  it('removes the hook it installed', () => {
+    installHook(repo);
+    uninstallHook(repo);
+    expect(existsSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'))).toBe(false);
+  });
+
+  it('leaves someone else\'s hook alone', () => {
+    const hookPath = join(repo, '.git', 'hooks', 'prepare-commit-msg');
+    writeFileSync(hookPath, '#!/bin/sh\necho mine\n');
+    expect(() => {
+      uninstallHook(repo);
+    }).toThrow(HookError);
+    expect(existsSync(hookPath)).toBe(true);
+  });
+
+  it('finds the husky hook it installed', () => {
+    makeHusky(repo);
+    installHook(repo);
+    uninstallHook(repo);
+    expect(existsSync(join(repo, '.husky', 'prepare-commit-msg'))).toBe(false);
+  });
+});
+
+describe('writeMessageFile', () => {
+  it('puts the message above the comment block git wrote', () => {
+    const file = join(repo, 'COMMIT_EDITMSG');
+    writeFileSync(file, '\n# Please enter the commit message.\n# On branch main\n', 'utf8');
+
+    writeMessageFile(file, 'fix(auth): reject expired sessions');
+
+    const written = readFileSync(file, 'utf8');
+    expect(written.startsWith('fix(auth): reject expired sessions\n\n')).toBe(true);
+    expect(written).toContain('# On branch main');
+  });
+
+  it('keeps a multi-line body intact', () => {
+    const file = join(repo, 'COMMIT_EDITMSG');
+    writeFileSync(file, '# comments\n', 'utf8');
+
+    writeMessageFile(file, 'feat: add x\n\nWhy it matters.');
+
+    expect(readFileSync(file, 'utf8')).toBe('feat: add x\n\nWhy it matters.\n\n# comments\n');
+  });
+
+  it('writes a bare message when git left the file empty', () => {
+    const file = join(repo, 'COMMIT_EDITMSG');
+    writeFileSync(file, '   \n', 'utf8');
+
+    writeMessageFile(file, 'docs: tidy readme');
+
+    expect(readFileSync(file, 'utf8')).toBe('docs: tidy readme\n');
+  });
+});

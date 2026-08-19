@@ -145,6 +145,8 @@ export interface RunOptions {
   retry?: boolean;
   provider?: string;
   silent?: boolean;
+  /** Write the message to this file instead of committing. Used by the git hook. */
+  write?: string;
 }
 
 export type TuiAction = 'commit' | 'edit' | 'retry' | 'abort';

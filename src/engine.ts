@@ -5,6 +5,7 @@ import { getStagedDiff, commitWithMessage } from './git.js';
 import { buildPrompt, parseCommitMessage, normalizeCommitMessage } from './prompt.js';
 import { resolveAdapter } from './adapters/index.js';
 import { streamToTerminal, showTui } from './tui.js';
+import { writeMessageFile } from './hooks.js';
 import { handleFatalError } from './errors.js';
 import { logger, setSilent } from './logger.js';
 
@@ -28,6 +29,13 @@ async function* withSpinnerStop(
 export async function run(options: RunOptions): Promise<void> {
   try {
     setSilent(options.silent ?? false);
+
+    // The git hook runs unattended — an interactive wizard there would hang the
+    // commit, so say what is missing and let git carry on with its own editor.
+    if (options.write && isFirstRun()) {
+      logger.warn('gitmuse is not configured yet — run `gm setup` or `gm connect`.');
+      return;
+    }
 
     // Trigger setup wizard automatically on first run
     if (isFirstRun()) {
@@ -68,6 +76,12 @@ export async function run(options: RunOptions): Promise<void> {
       await streamToTerminal(firstStream),
       config.emoji,
     ).raw;
+
+    // Hook mode: hand the message to git and let git do the committing.
+    if (options.write) {
+      writeMessageFile(options.write, currentMessage);
+      return;
+    }
 
     // --yes / autoConfirm: skip TUI
     if (config.autoConfirm) {

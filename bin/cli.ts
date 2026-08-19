@@ -20,6 +20,7 @@ program
   .option('-r, --retry', 'regenerate without re-reading diff')
   .option('-p, --provider <name>', 'override provider for this run')
   .option('-s, --silent', 'suppress output except the commit message')
+  .option('-w, --write <file>', 'write the message into <file> instead of committing (git hook mode)')
   .action(async (options: Record<string, unknown>) => {
     const { run } = await import('../src/engine.js');
     await run(options);

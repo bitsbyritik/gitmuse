@@ -6,6 +6,7 @@ import { logger } from './logger.js';
 const PROVIDER_LABELS: Record<ProviderName, string> = {
   'claude-code': 'Claude Code — runs on your Claude subscription (no API key)',
   codex: 'Codex CLI   — runs on your ChatGPT plan (no API key)',
+  cursor: 'Cursor CLI  — runs on your Cursor subscription (no API key)',
   ollama: 'Ollama      — local, free, offline (requires: ollama serve)',
   groq: 'Groq        — cloud, free tier, very fast',
   gemini: 'Gemini      — cloud, free tier (aistudio.google.com — no credit card)',
@@ -29,7 +30,8 @@ export async function setup(): Promise<void> {
 
   switch (provider) {
     case 'claude-code':
-    case 'codex': {
+    case 'codex':
+    case 'cursor': {
       // Agents are connected, not keyed — hand off to the connect flow, which
       // finds the CLI, checks the sign-in, and saves the provider itself.
       const { findAgent } = await import('./agents/index.js');

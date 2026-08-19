@@ -1,4 +1,11 @@
-import type { AgentAuth, AgentEvent, AgentInvocation, ArgTier, CliAgent } from './types.js';
+import type {
+  AgentAuth,
+  AgentEvent,
+  AgentInvocation,
+  AgentParseState,
+  ArgTier,
+  CliAgent,
+} from './types.js';
 
 /**
  * Replaces Claude Code's own coding-agent system prompt. gitmuse sends a
@@ -102,7 +109,8 @@ export const claudeCode: CliAgent = {
     };
   },
 
-  parseEvent(line: string): AgentEvent | undefined {
+  // Claude Code's stream never repeats itself, so the per-run state is unused.
+  parseEvent(line: string, _state: AgentParseState): AgentEvent | undefined {
     let json: StreamJsonLine;
     try {
       json = JSON.parse(line) as StreamJsonLine;

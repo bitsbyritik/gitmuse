@@ -1,4 +1,11 @@
-import type { AgentAuth, AgentEvent, AgentInvocation, ArgTier, CliAgent } from './types.js';
+import type {
+  AgentAuth,
+  AgentEvent,
+  AgentInvocation,
+  AgentParseState,
+  ArgTier,
+  CliAgent,
+} from './types.js';
 
 /**
  * Sentinel model meaning "whatever Codex is already configured to use".
@@ -102,7 +109,8 @@ export const codexCli: CliAgent = {
     };
   },
 
-  parseEvent(line: string): AgentEvent | undefined {
+  // Codex sends one whole message, never deltas — no per-run state needed.
+  parseEvent(line: string, _state: AgentParseState): AgentEvent | undefined {
     let json: CodexEventLine;
     try {
       json = JSON.parse(line) as CodexEventLine;

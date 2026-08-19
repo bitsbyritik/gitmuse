@@ -2,7 +2,7 @@ import { select } from '@inquirer/prompts';
 import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { spawnSync } from 'child_process';
+import { execaSync } from 'execa';
 import { randomUUID } from 'crypto';
 import chalk from 'chalk';
 import type { TuiResult } from './types.js';
@@ -36,7 +36,7 @@ function openInEditor(initial: string): string {
   const tmpFile = join(tmpdir(), `gitmuse-${randomUUID()}.txt`);
   writeFileSync(tmpFile, initial, 'utf8');
 
-  const result = spawnSync(editor, [tmpFile], { stdio: 'inherit' });
+  const result = execaSync(editor, [tmpFile], { stdio: 'inherit', reject: false });
 
   let edited = initial;
   try {
@@ -49,7 +49,7 @@ function openInEditor(initial: string): string {
     }
   }
 
-  if (result.status !== 0) return initial;
+  if (result.failed) return initial;
   return edited;
 }
 

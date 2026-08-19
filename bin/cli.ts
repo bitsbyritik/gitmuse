@@ -35,7 +35,7 @@ program
 
 program
   .command('connect [agent]')
-  .description('connect a coding agent you are signed in to (e.g. claude-code, codex)')
+  .description('connect a coding agent you are signed in to (claude-code, codex, cursor)')
   .option('-m, --model <model>', 'model to request from the agent')
   .option('-l, --list', 'show agent status and exit')
   .option('--no-test', 'skip the live test request')
@@ -44,7 +44,7 @@ program
     const { connect, listAgents } = await import('../src/connect.js');
     try {
       if (options['list']) {
-        listAgents();
+        await listAgents();
         return;
       }
       await connect(agent, {

@@ -1,20 +1,24 @@
-import { select, confirm } from '@inquirer/prompts';
-import { spawnSync } from 'child_process';
+import { select, search, confirm } from '@inquirer/prompts';
+import { execa } from 'execa';
 import chalk from 'chalk';
 import ora from 'ora';
 import type { AgentSettings, Config } from './types.js';
-import type { AgentStatus, CliAgent } from './agents/types.js';
+import type { AgentModel, AgentStatus, CliAgent } from './agents/types.js';
 import {
   CLI_AGENTS,
-  PLANNED_AGENTS,
   findAgent,
   handshakeAgent,
+  listModels,
   probeAgent,
+  probeAllAgents,
   resolveCommand,
 } from './agents/index.js';
 import { getConfig, saveConfig } from './config.js';
 import { ConfigError } from './errors.js';
 import { logger } from './logger.js';
+
+/** Above this many models a plain list stops being browsable — offer search. */
+const SEARCH_THRESHOLD = 12;
 
 const noColor = Boolean(process.env['NO_COLOR']);
 const paint = (text: string, fn: (s: string) => string): string =>
@@ -45,47 +49,104 @@ function statusLine(status: AgentStatus): string {
 }
 
 /** Prints every agent and whether it is ready to use. */
-export function listAgents(config: Config = getConfig()): void {
+export async function listAgents(config: Config = getConfig()): Promise<void> {
+  const spinner = ora({ text: 'Looking for installed agents…' }).start();
+  const statuses = await probeAllAgents((id) => config.agents[id] ?? {});
+  spinner.stop();
+
   console.log(`\n  ${paint('Agents', chalk.bold)}\n`);
 
-  for (const agent of CLI_AGENTS) {
-    const status = probeAgent(agent, config.agents[agent.id] ?? {});
-    const active = config.provider === agent.id;
+  for (const status of statuses) {
+    const active = config.provider === status.agent.id;
     const version = status.version ? paint(` · v${status.version}`, chalk.dim) : '';
 
     console.log(
-      `  ${statusDot(status, active)}  ${agent.name.padEnd(14)}${statusLine(status)}${version}` +
+      `  ${statusDot(status, active)}  ${status.agent.name.padEnd(14)}${statusLine(status)}${version}` +
         (active ? paint('  ← in use', chalk.cyan) : ''),
     );
-  }
-
-  for (const planned of PLANNED_AGENTS) {
-    console.log(
-      `  ${paint('·', chalk.dim)}  ${paint(planned.name.padEnd(14) + planned.note, chalk.dim)}`,
-    );
+    if (status.offPath) {
+      console.log(paint(`       found off PATH at ${status.offPath}`, chalk.dim));
+    }
   }
 
   console.log(`\n  ${paint('Connect one with: gm connect', chalk.dim)}\n`);
 }
 
+/** How one model reads in the picker. */
+function modelChoice(model: AgentModel): { value: string; name: string } {
+  const notes = [
+    model.label,
+    model.current && 'your current model',
+    model.isDefault && !model.current && 'agent default',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return {
+    value: model.id,
+    name: notes ? `${model.id}  ${paint(`(${notes})`, chalk.dim)}` : model.id,
+  };
+}
+
 /**
- * Label for one model choice. The conventional id "default" means "whatever the
- * agent itself is set to" — agents whose model list varies by plan or version
- * use it so gitmuse never pins a model the account cannot request.
+ * Asks the agent what the signed-in account may run, then lets the user pick.
+ * Large catalogues (Cursor lists 200+) get a type-to-filter prompt instead of a
+ * list nobody can scroll through.
  */
-function modelLabel(agent: CliAgent, model: string, index: number): string {
-  if (model === 'default') return `default  (whatever ${agent.name} is already set to)`;
-  return index === 0 ? `${model}  (recommended)` : model;
+async function pickModel(
+  agent: CliAgent,
+  command: string,
+  options: ConnectOptions,
+): Promise<string> {
+  const spinner = ora({ text: `Asking ${agent.name} which models you can use…` }).start();
+  const { models, live } = await listModels(agent, command);
+  spinner.stop();
+
+  if (models.length === 0) return '';
+
+  // What the account is actually set to beats the CLI's fallback, which beats
+  // whatever happens to be listed first.
+  const preferred =
+    models.find((m) => m.current) ?? models.find((m) => m.isDefault) ?? models[0];
+  const preferredId = preferred?.id ?? '';
+
+  if (options.yes || models.length === 1) return preferredId;
+
+  logger.dim(
+    live
+      ? `    ${String(models.length)} models available on your account`
+      : `    ${agent.name} has no model list command — showing gitmuse's defaults`,
+  );
+
+  // Preferred first: `search` has no notion of a default, and in a list this
+  // long the top entry is the only one the user is guaranteed to see.
+  const ordered = preferred ? [preferred, ...models.filter((m) => m !== preferred)] : models;
+  const choices = ordered.map(modelChoice);
+  const message = 'Which model should gitmuse ask for?';
+
+  if (models.length <= SEARCH_THRESHOLD) {
+    return select({ message, choices, default: preferredId });
+  }
+
+  return search<string>({
+    message: `${message} (type to filter)`,
+    source: (term) => {
+      const needle = (term ?? '').trim().toLowerCase();
+      if (!needle) return choices;
+      return choices.filter((c) => c.value.toLowerCase().includes(needle));
+    },
+    pageSize: 12,
+  });
 }
 
 /** Runs the agent's own login command, inheriting the terminal. */
-function runLogin(agent: CliAgent, command: string): void {
+async function runLogin(agent: CliAgent, command: string): Promise<void> {
   const [, ...loginArgs] = agent.loginCommand.split(' ');
   console.log('');
-  const result = spawnSync(command, loginArgs, { stdio: 'inherit' });
+  const result = await execa(command, loginArgs, { stdio: 'inherit', reject: false });
   console.log('');
-  if (result.error) {
-    logger.warn(`Could not start the login flow: ${result.error.message}`);
+  if (result.failed && result.code === 'ENOENT') {
+    logger.warn(`Could not start the login flow: ${command} is not runnable.`);
   }
 }
 
@@ -98,11 +159,14 @@ export async function connectAgent(
   options: ConnectOptions = {},
 ): Promise<boolean> {
   const stored: AgentSettings = getConfig().agents[agent.id] ?? {};
-  let status = probeAgent(agent, stored);
 
   console.log(
     `\n  ${paint(agent.name, chalk.bold)} ${paint(`— ${agent.tagline}`, chalk.dim)}\n`,
   );
+
+  const spinner = ora({ text: `Looking for ${agent.name}…` }).start();
+  let status = await probeAgent(agent, stored);
+  spinner.stop();
 
   // 1. Is the binary there?
   if (!status.installed) {
@@ -114,7 +178,7 @@ export async function connectAgent(
     const recheck = await confirm({ message: 'Check again?', default: true });
     if (!recheck) return false;
 
-    status = probeAgent(agent, stored);
+    status = await probeAgent(agent, stored);
     if (!status.installed) {
       logger.error(`Still not finding ${agent.name}. Run \`gm connect\` again once installed.`);
       return false;
@@ -124,6 +188,14 @@ export async function connectAgent(
   logger.success(
     `Found ${agent.name}${status.version ? ` v${status.version}` : ''} at "${status.command}"`,
   );
+
+  // Detection reaches past PATH; remember the absolute path so every later run
+  // finds it too, including git hooks with a thinner environment.
+  const settings: AgentSettings = { ...stored };
+  if (status.offPath) {
+    logger.dim(`    Not on your PATH — pinning this path in gitmuse's config.`);
+    settings.command = status.offPath;
+  }
 
   // 2. Is it signed in? The agent's own CLI answers this — gitmuse never sees
   //    the credential.
@@ -136,8 +208,8 @@ export async function connectAgent(
         default: true,
       });
       if (signIn) {
-        runLogin(agent, status.command);
-        status = probeAgent(agent, stored);
+        await runLogin(agent, status.command);
+        status = await probeAgent(agent, settings);
       }
     }
 
@@ -158,29 +230,16 @@ export async function connectAgent(
     }
   }
 
-  // 3. Which model?
-  const firstModel = agent.models[0] ?? '';
-  let model = options.model?.trim() || stored.model || '';
-  if (!model) {
-    model =
-      options.yes || agent.models.length <= 1
-        ? firstModel
-        : await select({
-            message: 'Which model should gitmuse ask for?',
-            choices: agent.models.map((m, i) => ({
-              value: m,
-              name: modelLabel(agent, m, i),
-            })),
-          });
-  }
-
-  const settings: AgentSettings = { ...stored, model };
+  // 3. Which model? Asked of the CLI, so the list matches the account.
+  const model =
+    options.model?.trim() || (await pickModel(agent, status.command, options));
+  settings.model = model;
 
   // 4. Prove the whole path works before saving it.
   if (!options.noTest) {
-    const spinner = ora({ text: `Testing ${agent.name}…` }).start();
+    const testing = ora({ text: `Testing ${agent.name}…` }).start();
     const result = await handshakeAgent(agent, settings);
-    spinner.stop();
+    testing.stop();
 
     if (!result.ok) {
       logger.error(`Test request failed: ${result.error ?? 'unknown error'}`);
@@ -217,31 +276,20 @@ export async function connect(
     return;
   }
 
-  if (CLI_AGENTS.length === 1) {
-    await connectAgent(CLI_AGENTS[0] as CliAgent, options);
-    return;
-  }
-
   const config = getConfig();
   console.log(`\n  ${paint('Connect an agent you are already signed in to', chalk.bold)}\n`);
 
+  const spinner = ora({ text: 'Looking for installed agents…' }).start();
+  const statuses = await probeAllAgents((id) => config.agents[id] ?? {});
+  spinner.stop();
+
   const choice = await select<string>({
     message: 'Which agent?',
-    choices: [
-      ...CLI_AGENTS.map((agent) => {
-        const status = probeAgent(agent, config.agents[agent.id] ?? {});
-        return {
-          value: agent.id,
-          name: `${statusDot(status, config.provider === agent.id)}  ${agent.name} — ${agent.vendor} · ${statusLine(status)}`,
-          description: agent.tagline,
-        };
-      }),
-      ...PLANNED_AGENTS.map((planned) => ({
-        value: `planned:${planned.name}`,
-        name: `·  ${planned.name} — ${planned.vendor} · ${planned.note}`,
-        disabled: true,
-      })),
-    ],
+    choices: statuses.map((status) => ({
+      value: status.agent.id,
+      name: `${statusDot(status, config.provider === status.agent.id)}  ${status.agent.name} — ${status.agent.vendor} · ${statusLine(status)}`,
+      description: status.agent.tagline,
+    })),
   });
 
   const agent = findAgent(choice);

@@ -12,7 +12,7 @@ export type HttpProviderName =
  * them with `gm connect`. Add a new agent's id here and register it in
  * `src/agents/index.ts`.
  */
-export type AgentProviderName = 'claude-code' | 'codex';
+export type AgentProviderName = 'claude-code' | 'codex' | 'cursor';
 
 export type ProviderName = HttpProviderName | AgentProviderName;
 

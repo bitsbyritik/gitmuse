@@ -1,15 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { claudeCode } from '../src/agents/claude-code.js';
 import { codexCli } from '../src/agents/codex.js';
+import { cursorCli } from '../src/agents/cursor.js';
 import {
   CLI_AGENTS,
   findAgent,
   isAgentProvider,
+  listModels,
   resolveCommand,
   resolveModel,
 } from '../src/agents/index.js';
+import { locateBinary, runCli } from '../src/agents/detect.js';
 import { CliAgentAdapter } from '../src/adapters/cli-agent.js';
-import type { AgentInvocation, ArgTier, CliAgent } from '../src/agents/types.js';
+import type {
+  AgentEvent,
+  AgentInvocation,
+  AgentModel,
+  AgentParseState,
+  ArgTier,
+  CliAgent,
+} from '../src/agents/types.js';
 import { AgentNotInstalledError, ProviderError } from '../src/errors.js';
 
 /** Collects every token an adapter yields. */
@@ -38,12 +48,17 @@ function fakeAgent(scripts: Record<ArgTier, string>, format: 'stream-json' | 'te
 
 const ndjson = (obj: unknown): string => JSON.stringify(obj);
 
+/** parseEvent with a throwaway per-run state, for one-off assertions. */
+function parse(agent: CliAgent, line: string, state: AgentParseState = {}): AgentEvent | undefined {
+  return agent.parseEvent(line, state);
+}
+
 describe('agent registry', () => {
-  it('registers claude-code and codex', () => {
+  it('registers claude-code, codex and cursor — and nothing else', () => {
     expect(findAgent('claude-code')).toBe(claudeCode);
     expect(findAgent('codex')).toBe(codexCli);
-    expect(CLI_AGENTS).toContain(claudeCode);
-    expect(CLI_AGENTS).toContain(codexCli);
+    expect(findAgent('cursor')).toBe(cursorCli);
+    expect(CLI_AGENTS).toEqual([claudeCode, codexCli, cursorCli]);
   });
 
   it('gives every agent a unique id', () => {
@@ -56,6 +71,7 @@ describe('agent registry', () => {
     expect(isAgentProvider('openai')).toBe(false);
     expect(isAgentProvider('claude-code')).toBe(true);
     expect(isAgentProvider('codex')).toBe(true);
+    expect(isAgentProvider('cursor')).toBe(true);
   });
 
   it('prefers configured command and model over the defaults', () => {
@@ -67,6 +83,9 @@ describe('agent registry', () => {
     expect(resolveCommand(codexCli)).toBe('codex');
     expect(resolveModel(codexCli)).toBe('default');
     expect(resolveModel(codexCli, { model: 'gpt-5.5' })).toBe('gpt-5.5');
+
+    expect(resolveCommand(cursorCli)).toBe('cursor-agent');
+    expect(resolveModel(cursorCli)).toBe('auto');
   });
 });
 
@@ -122,27 +141,27 @@ describe('codex definition', () => {
 
   it('yields the agent message and ignores reasoning and tool items', () => {
     expect(
-      codexCli.parseEvent(
+      parse(codexCli, 
         ndjson({ type: 'item.completed', item: { type: 'agent_message', text: 'fix: x' } }),
       ),
     ).toEqual({ type: 'text', text: 'fix: x' });
 
     expect(
-      codexCli.parseEvent(
+      parse(codexCli, 
         ndjson({ type: 'item.completed', item: { type: 'reasoning', text: 'hmm' } }),
       ),
     ).toBeUndefined();
     expect(
-      codexCli.parseEvent(
+      parse(codexCli, 
         ndjson({ type: 'item.completed', item: { type: 'command_execution', text: 'ls' } }),
       ),
     ).toBeUndefined();
-    expect(codexCli.parseEvent(ndjson({ type: 'thread.started', thread_id: 'x' }))).toBeUndefined();
-    expect(codexCli.parseEvent('Shell cwd was reset to /tmp')).toBeUndefined();
+    expect(parse(codexCli, ndjson({ type: 'thread.started', thread_id: 'x' }))).toBeUndefined();
+    expect(parse(codexCli, 'Shell cwd was reset to /tmp')).toBeUndefined();
   });
 
   it('ends on a completed turn', () => {
-    expect(codexCli.parseEvent(ndjson({ type: 'turn.completed', usage: {} }))).toEqual({
+    expect(parse(codexCli, ndjson({ type: 'turn.completed', usage: {} }))).toEqual({
       type: 'end',
     });
   });
@@ -154,23 +173,219 @@ describe('codex definition', () => {
       error: { type: 'invalid_request_error', message: 'model is not supported' },
     });
 
-    expect(codexCli.parseEvent(ndjson({ type: 'error', message: nested }))).toEqual({
+    expect(parse(codexCli, ndjson({ type: 'error', message: nested }))).toEqual({
       type: 'error',
       message: 'model is not supported',
     });
     expect(
-      codexCli.parseEvent(ndjson({ type: 'turn.failed', error: { message: nested } })),
+      parse(codexCli, ndjson({ type: 'turn.failed', error: { message: nested } })),
     ).toEqual({ type: 'error', message: 'model is not supported' });
   });
 
   it('falls back to the raw message when it is not nested JSON', () => {
-    expect(codexCli.parseEvent(ndjson({ type: 'error', message: 'stream disconnected' }))).toEqual({
+    expect(parse(codexCli, ndjson({ type: 'error', message: 'stream disconnected' }))).toEqual({
       type: 'error',
       message: 'stream disconnected',
     });
-    expect(codexCli.parseEvent(ndjson({ type: 'turn.failed' }))).toEqual({
+    expect(parse(codexCli, ndjson({ type: 'turn.failed' }))).toEqual({
       type: 'error',
       message: 'the agent reported an error',
+    });
+  });
+});
+
+describe('cursor definition', () => {
+  it('runs print mode with NDJSON and read-only ask mode', () => {
+    const { args, format } = cursorCli.buildInvocation('composer-2.5', 'full');
+    expect(args).toContain('-p');
+    expect(args[args.indexOf('--output-format') + 1]).toBe('stream-json');
+    expect(args[args.indexOf('--model') + 1]).toBe('composer-2.5');
+    expect(args[args.indexOf('--mode') + 1]).toBe('ask');
+    expect(args).toContain('--trust');
+    expect(args).toContain('--stream-partial-output');
+    expect(format).toBe('stream-json');
+  });
+
+  it('drops the newer flags on the basic tier', () => {
+    const { args } = cursorCli.buildInvocation('auto', 'basic');
+    expect(args).toEqual(['-p', '--output-format', 'stream-json', '--model', 'auto']);
+  });
+
+  it('reads status JSON, and the human line from older builds', () => {
+    expect(
+      cursorCli.parseAuth?.(
+        '{"status":"authenticated","isAuthenticated":true,"userInfo":{"email":"a@b.c"}}',
+      ),
+    ).toEqual({ connected: true, account: 'a@b.c' });
+
+    expect(cursorCli.parseAuth?.('{"isAuthenticated":false}').connected).toBe(false);
+    expect(cursorCli.parseAuth?.('✓ Logged in as a@b.c')).toEqual({
+      connected: true,
+      account: 'a@b.c',
+    });
+    expect(cursorCli.parseAuth?.('Not logged in').connected).toBe(false);
+  });
+
+  it('separates the CLI default from the model the account is set to', () => {
+    const models = cursorCli.listModels?.parse(
+      [
+        'Available models',
+        '',
+        'auto - Auto (default)',
+        'composer-2.5 - Composer 2.5 (current)',
+        'gpt-5.2 - GPT-5.2 (current, default)',
+        'not a model line',
+      ].join('\n'),
+    );
+
+    expect(models).toEqual([
+      { id: 'auto', label: 'Auto', current: false, isDefault: true },
+      { id: 'composer-2.5', label: 'Composer 2.5', current: true, isDefault: false },
+      { id: 'gpt-5.2', label: 'GPT-5.2', current: true, isDefault: true },
+    ]);
+  });
+
+  it('keeps a parenthetical that is part of the model name', () => {
+    const models = cursorCli.listModels?.parse(
+      'claude-fable-5-high - Claude Fable 5 1M (NO ZDR)\nx-1 - X One (current)',
+    );
+
+    expect(models?.[0]).toEqual({
+      id: 'claude-fable-5-high',
+      label: 'Claude Fable 5 1M (NO ZDR)',
+      current: false,
+      isDefault: false,
+    });
+    expect(models?.[1]?.label).toBe('X One');
+  });
+
+  it('streams deltas and drops the assembled repeat that follows them', () => {
+    const state: AgentParseState = {};
+    const delta = (text: string, ts?: number): string =>
+      ndjson({
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text }] },
+        ...(ts === undefined ? {} : { timestamp_ms: ts }),
+      });
+
+    expect(parse(cursorCli, delta('fix', 1), state)).toEqual({ type: 'text', text: 'fix' });
+    expect(parse(cursorCli, delta(': x', 2), state)).toEqual({ type: 'text', text: ': x' });
+    // Cursor repeats the whole message once the deltas are done.
+    expect(parse(cursorCli, delta('fix: x'), state)).toBeUndefined();
+  });
+
+  it('uses the assembled message when no deltas arrived', () => {
+    const whole = ndjson({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'chore: bump' }] },
+    });
+    expect(parse(cursorCli, whole)).toEqual({ type: 'text', text: 'chore: bump' });
+  });
+
+  it('ignores thinking, init and user echo events', () => {
+    expect(
+      parse(cursorCli, ndjson({ type: 'thinking', subtype: 'delta', text: 'hmm' })),
+    ).toBeUndefined();
+    expect(parse(cursorCli, ndjson({ type: 'system', subtype: 'init' }))).toBeUndefined();
+    expect(parse(cursorCli, ndjson({ type: 'user', message: {} }))).toBeUndefined();
+    expect(parse(cursorCli, 'not json')).toBeUndefined();
+  });
+
+  it('surfaces result errors and ends on success', () => {
+    expect(
+      parse(cursorCli, ndjson({ type: 'result', is_error: true, result: 'usage limit' })),
+    ).toEqual({ type: 'error', message: 'usage limit' });
+    expect(parse(cursorCli, ndjson({ type: 'result', subtype: 'success' }))).toEqual({
+      type: 'end',
+    });
+  });
+});
+
+describe('CLI detection', () => {
+  it('finds a binary that is on PATH', async () => {
+    const found = await locateBinary(process.platform === 'win32' ? 'node.exe' : 'node');
+    expect(found.path).toBeTruthy();
+    expect(found.offPath).toBeUndefined();
+  });
+
+  it('accepts an absolute path as given', async () => {
+    const found = await locateBinary(process.execPath);
+    expect(found.path).toBe(process.execPath);
+  });
+
+  it('reports nothing for a binary that does not exist', async () => {
+    expect(await locateBinary('gitmuse-no-such-binary-xyz')).toEqual({});
+    expect(await locateBinary('/nonexistent/gitmuse-xyz')).toEqual({});
+  });
+
+  it('never throws — a missing binary comes back as data', async () => {
+    const result = await runCli('gitmuse-no-such-binary-xyz', ['--version'], 5_000);
+    expect(result.ok).toBe(false);
+    expect(result.missing).toBe(true);
+  });
+
+  it('reports stdout, stderr and the exit code of a real run', async () => {
+    const ok = await runCli(process.execPath, ['-e', 'process.stdout.write("hi")'], 5_000);
+    expect(ok).toMatchObject({ ok: true, stdout: 'hi', output: 'hi', missing: false });
+
+    const bad = await runCli(
+      process.execPath,
+      ['-e', 'process.stderr.write("nope");process.exit(2)'],
+      5_000,
+    );
+    expect(bad.ok).toBe(false);
+    expect(bad.exitCode).toBe(2);
+    // stdout was empty, so the status the CLI actually printed is on stderr.
+    expect(bad.output).toBe('nope');
+  });
+
+  it('gives up on a hung CLI instead of blocking', async () => {
+    const result = await runCli(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], 300);
+    expect(result.timedOut).toBe(true);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('listModels', () => {
+  it('asks the CLI and marks the answer live', async () => {
+    const agent: CliAgent = {
+      ...cursorCli,
+      command: process.execPath,
+      listModels: {
+        args: [
+          '-e',
+          'process.stdout.write("a - Model A (current, default)\\nb - Model B")',
+        ],
+        parse: (stdout: string): AgentModel[] => cursorCli.listModels?.parse(stdout) ?? [],
+      },
+    };
+
+    await expect(listModels(agent, process.execPath)).resolves.toEqual({
+      live: true,
+      models: [
+        { id: 'a', label: 'Model A', current: true, isDefault: true },
+        { id: 'b', label: 'Model B', current: false, isDefault: false },
+      ],
+    });
+  });
+
+  it('falls back to the static list when the CLI cannot answer', async () => {
+    const agent: CliAgent = {
+      ...cursorCli,
+      models: ['auto'],
+      listModels: { args: ['-e', 'process.exit(1)'], parse: () => [] },
+    };
+
+    await expect(listModels(agent, process.execPath)).resolves.toEqual({
+      live: false,
+      models: [{ id: 'auto' }],
+    });
+  });
+
+  it('falls back for agents with no model command at all', async () => {
+    await expect(listModels(claudeCode, 'claude')).resolves.toEqual({
+      live: false,
+      models: [{ id: 'sonnet' }, { id: 'haiku' }, { id: 'opus' }],
     });
   });
 });
@@ -209,7 +424,7 @@ describe('claude-code definition', () => {
   });
 
   it('yields text deltas and ignores thinking', () => {
-    const text = claudeCode.parseEvent(
+    const text = parse(claudeCode, 
       ndjson({
         type: 'stream_event',
         event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'fix: ' } },
@@ -217,7 +432,7 @@ describe('claude-code definition', () => {
     );
     expect(text).toEqual({ type: 'text', text: 'fix: ' });
 
-    const thinking = claudeCode.parseEvent(
+    const thinking = parse(claudeCode, 
       ndjson({
         type: 'stream_event',
         event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'hmm' } },
@@ -228,13 +443,13 @@ describe('claude-code definition', () => {
 
   it('surfaces result errors and ignores noise', () => {
     expect(
-      claudeCode.parseEvent(ndjson({ type: 'result', is_error: true, result: 'rate limit' })),
+      parse(claudeCode, ndjson({ type: 'result', is_error: true, result: 'rate limit' })),
     ).toEqual({ type: 'error', message: 'rate limit' });
-    expect(claudeCode.parseEvent(ndjson({ type: 'result', result: 'ok' }))).toEqual({
+    expect(parse(claudeCode, ndjson({ type: 'result', result: 'ok' }))).toEqual({
       type: 'end',
     });
-    expect(claudeCode.parseEvent('not json at all')).toBeUndefined();
-    expect(claudeCode.parseEvent(ndjson({ type: 'rate_limit_event' }))).toBeUndefined();
+    expect(parse(claudeCode, 'not json at all')).toBeUndefined();
+    expect(parse(claudeCode, ndjson({ type: 'rate_limit_event' }))).toBeUndefined();
   });
 });
 

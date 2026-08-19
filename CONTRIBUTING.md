@@ -39,10 +39,11 @@ Look at `src/adapters/groq.ts` as the simplest reference implementation.
 
 ## adding a CLI agent
 
-An **agent** is a coding CLI the user is already signed in to (Claude Code and Codex CLI today).
-gitmuse spawns it instead of holding a key — so there is no credential to store, and no OAuth flow
-to reimplement. `src/adapters/cli-agent.ts` does the spawning, streaming, timeout and error
-handling for every agent, so adding one is a single definition file:
+An **agent** is a coding CLI the user is already signed in to (Claude Code, Codex CLI and Cursor
+CLI today). gitmuse spawns it instead of holding a key — so there is no credential to store, and no
+OAuth flow to reimplement. Two modules carry every agent: `src/agents/detect.ts` locates binaries
+and runs short-lived commands, and `src/adapters/cli-agent.ts` does the streaming, timeouts and
+error handling. Adding an agent is a single definition file:
 
 1. Create `src/agents/<name>.ts` exporting a `CliAgent` (see `src/agents/types.ts` for the contract):
    - `versionArgs` — how to detect the binary
@@ -52,18 +53,28 @@ handling for every agent, so adding one is a single definition file:
    - `buildInvocation(model, tier)` — argv for a one-shot, non-interactive completion.
      `full` may use any flag; `basic` must use only flags the CLI has had for a long time —
      it is retried automatically when an older install rejects a newer flag
-   - `parseEvent(line)` — turn one line of stdout into `text` / `error` / `end`
+   - `listModels` (optional) — args that make the CLI print its catalogue, plus a parser.
+     Omit it and the static `models` list is used; it is also the fallback when the command
+     fails, so `gm connect` always has something to offer
+   - `parseEvent(line, state)` — turn one line of stdout into `text` / `error` / `end`.
+     `state` is a scratch object scoped to one run, for streams that repeat themselves
+     (Cursor emits every delta and then the assembled message again)
 2. Add the id to `AgentProviderName` in `src/types.ts`
 3. Push it into `CLI_AGENTS` in `src/agents/index.ts`, and drop it from `PLANNED_AGENTS`
 4. Add the id to the agent `case` list in `src/setup.ts` so the wizard offers it
+
+Never reach for `child_process` in agent code. `src/agents/detect.ts` exports `locateBinary` and
+`runCli`, both built on [execa](https://github.com/sindresorhus/execa); `runCli` never throws, so
+detection branches on data instead of catching exceptions.
 
 That is all — `gm connect`, config (`agents.<id>.*`), the adapter and the error messages pick it up
 from the registry. Use `src/agents/claude-code.ts` (stream deltas, JSON auth) or
 `src/agents/codex.ts` (whole-message events, text auth) as the reference.
 
-If the CLI's usable models depend on the user's plan or its own version, list `'default'` first and
-have `buildInvocation` pass no model flag for it. Pinning a slug the account cannot request fails
-every run — `gm connect` renders `default` as "whatever <agent> is already set to".
+If the CLI's usable models depend on the user's plan or its own version, prefer `listModels` so the
+picker shows what the account can really run. Where there is no such command, list `'default'` first
+and have `buildInvocation` pass no model flag for it — pinning a slug the account cannot request
+fails every run, and `gm connect` renders `default` as "whatever <agent> is already set to".
 
 **Ground rule:** never read, copy, or reuse another tool's credential files or tokens. gitmuse
 only ever *runs the agent's own CLI* and lets that CLI authenticate itself.
@@ -80,6 +91,7 @@ a one-line change, and it is the cheapest place in the codebase to prevent a wro
 ## code style
 
 - Strict TypeScript — no `any`, explicit return types on all exported functions
+- Use `execa` for subprocesses, not `child_process` (`src/git.ts` predates this rule)
 - ESM only — use `.js` extensions on all local imports
 - No `__dirname` / `__filename` — use `import.meta.url` instead
 - No comments explaining *what* the code does — only *why* when it's non-obvious

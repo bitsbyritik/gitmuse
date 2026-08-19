@@ -22,6 +22,37 @@ export type AgentEvent =
   | { type: 'error'; message: string }
   | { type: 'end' };
 
+/**
+ * Scratch space `parseEvent` may write to, created fresh by the adapter for
+ * each run and never shared between runs. Agents whose stream repeats itself —
+ * Cursor emits every delta and then the assembled message again — need to
+ * remember what they have already yielded, and a module-level variable would
+ * leak that memory across runs.
+ */
+export type AgentParseState = Record<string, unknown>;
+
+/** One model the signed-in account may ask an agent for. */
+export interface AgentModel {
+  /** Value passed to the agent's `--model` flag. */
+  id: string;
+  /** Human name the CLI printed, when it printed one. */
+  label?: string;
+  /** The account's currently selected model, when the CLI says which. */
+  current?: boolean;
+  /** The CLI's own fallback when nothing is chosen. */
+  isDefault?: boolean;
+}
+
+/**
+ * How to ask a CLI which models the signed-in account may actually use.
+ * Declarative on purpose — the agent file says what to run and how to read it,
+ * and `src/agents/detect.ts` owns every subprocess.
+ */
+export interface ModelQuery {
+  args: readonly string[];
+  parse(stdout: string): AgentModel[];
+}
+
 /** Who you are signed in as, as reported by the agent's own CLI. */
 export interface AgentAuth {
   connected: boolean;
@@ -38,11 +69,14 @@ export interface AgentAuth {
 /** Result of looking for an agent's binary on this machine. */
 export interface AgentStatus {
   agent: CliAgent;
-  /** Resolved command actually probed (config override or the default). */
+  /** Resolved executable actually probed — a config override, a name on PATH,
+   *  or an absolute path found in a well-known install directory. */
   command: string;
   installed: boolean;
   version?: string;
   auth?: AgentAuth;
+  /** Set when the binary only turned up outside PATH, at this absolute path. */
+  offPath?: string;
 }
 
 /**
@@ -64,7 +98,10 @@ export interface CliAgent {
   tagline: string;
   /** Default executable name; users can override it per agent in config. */
   command: string;
-  /** Model names offered when connecting. First entry is the default. */
+  /**
+   * Models offered when the CLI cannot be asked for a live list — also the
+   * fallback when `listModels` fails. First entry is the default.
+   */
   models: readonly string[];
   /** Shell command that installs the agent. */
   install: string;
@@ -84,8 +121,17 @@ export interface CliAgent {
    */
   parseAuth?(output: string): AgentAuth;
 
+  /**
+   * How to ask this CLI what the signed-in account may run. Omit it when the
+   * CLI has no such command, and `models` is used instead.
+   */
+  listModels?: ModelQuery;
+
   /** Builds one non-interactive invocation for the given model. */
   buildInvocation(model: string, tier: ArgTier): AgentInvocation;
-  /** Parses one line of `stream-json` stdout. Return undefined to ignore it. */
-  parseEvent(line: string): AgentEvent | undefined;
+  /**
+   * Parses one line of `stream-json` stdout. Return undefined to ignore it.
+   * `state` persists across the lines of a single run only.
+   */
+  parseEvent(line: string, state: AgentParseState): AgentEvent | undefined;
 }

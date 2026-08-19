@@ -1,8 +1,9 @@
-import { spawnSync } from 'child_process';
 import type { AgentProviderName, AgentSettings } from '../types.js';
-import type { AgentAuth, AgentStatus, CliAgent } from './types.js';
+import type { AgentAuth, AgentModel, AgentStatus, CliAgent } from './types.js';
+import { locateBinary, runCli, timeouts } from './detect.js';
 import { claudeCode } from './claude-code.js';
 import { codexCli } from './codex.js';
+import { cursorCli } from './cursor.js';
 
 /**
  * Every agent gitmuse can connect to.
@@ -11,12 +12,7 @@ import { codexCli } from './codex.js';
  * `AgentProviderName` in `src/types.ts`, and push it here. The connect flow,
  * config, adapter and error handling all pick it up automatically.
  */
-export const CLI_AGENTS: readonly CliAgent[] = [claudeCode, codexCli];
-
-/** Agents we intend to support — shown as "coming soon" in `gm connect`. */
-export const PLANNED_AGENTS: readonly { name: string; vendor: string; note: string }[] = [
-  { name: 'Gemini CLI', vendor: 'Google', note: 'coming soon — contributions welcome' },
-];
+export const CLI_AGENTS: readonly CliAgent[] = [claudeCode, codexCli, cursorCli];
 
 export const AGENT_IDS: readonly AgentProviderName[] = CLI_AGENTS.map((a) => a.id);
 
@@ -40,29 +36,17 @@ export function resolveModel(agent: CliAgent, settings: AgentSettings = {}): str
   return settings.model?.trim() || agent.models[0] || '';
 }
 
-/** Runs the agent's auth command. Never throws — an unusable CLI is "not connected". */
-function readAuth(agent: CliAgent, command: string): AgentAuth | undefined {
+/** Asks the CLI who is signed in. Never throws — an unusable CLI is "not connected". */
+async function readAuth(agent: CliAgent, command: string): Promise<AgentAuth | undefined> {
   if (!agent.authArgs || !agent.parseAuth) return undefined;
 
-  const result = spawnSync(command, [...agent.authArgs], {
-    encoding: 'utf8',
-    timeout: 15_000,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const result = await runCli(command, agent.authArgs, timeouts.auth);
 
-  if (result.error || result.status !== 0) {
-    return {
-      connected: false,
-      detail: (result.stderr || '').trim() || undefined,
-    };
-  }
-
-  // Some CLIs report status on stdout (Claude Code's JSON), others on stderr
-  // (Codex). Hand the parser whichever stream the CLI actually used.
-  const output = result.stdout.trim() || result.stderr;
+  // A non-zero exit is how most of these CLIs say "signed out".
+  if (!result.ok) return { connected: false, detail: result.output.trim() || undefined };
 
   try {
-    return agent.parseAuth(output);
+    return agent.parseAuth(result.output);
   } catch {
     return { connected: false };
   }
@@ -72,29 +56,60 @@ function readAuth(agent: CliAgent, command: string): AgentAuth | undefined {
  * Looks for the agent's binary and asks it who is signed in.
  * Fast and free — no inference request is made.
  */
-export function probeAgent(agent: CliAgent, settings: AgentSettings = {}): AgentStatus {
-  const command = resolveCommand(agent, settings);
+export async function probeAgent(
+  agent: CliAgent,
+  settings: AgentSettings = {},
+): Promise<AgentStatus> {
+  const configured = resolveCommand(agent, settings);
+  const { path, offPath } = await locateBinary(configured);
 
-  const probe = spawnSync(command, [...agent.versionArgs], {
-    encoding: 'utf8',
-    timeout: 10_000,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  if (!path) return { agent, command: configured, installed: false };
 
-  if (probe.error || probe.status !== 0) {
-    return { agent, command, installed: false };
-  }
+  // Version and sign-in are independent questions. Some of these CLIs take
+  // seconds just to boot — Cursor's is ~6s — and asking them one after the other
+  // doubles that wait for nothing.
+  const [probe, auth] = await Promise.all([
+    runCli(path, agent.versionArgs, timeouts.version),
+    readAuth(agent, path),
+  ]);
 
-  const version = /\d+\.\d+\.\d+/.exec(probe.stdout)?.[0];
+  if (!probe.ok) return { agent, command: path, installed: false, offPath };
 
-  return { agent, command, installed: true, version, auth: readAuth(agent, command) };
+  const version = /\d+\.\d+\.\d+/.exec(probe.output)?.[0];
+
+  return { agent, command: path, installed: true, version, offPath, auth };
 }
 
-/** Probes every registered agent. */
-export function probeAllAgents(
+/** Probes every registered agent at once — detection is I/O, not CPU. */
+export async function probeAllAgents(
   settingsFor: (id: AgentProviderName) => AgentSettings = () => ({}),
-): AgentStatus[] {
-  return CLI_AGENTS.map((agent) => probeAgent(agent, settingsFor(agent.id)));
+): Promise<AgentStatus[]> {
+  return Promise.all(CLI_AGENTS.map((agent) => probeAgent(agent, settingsFor(agent.id))));
+}
+
+/**
+ * Asks the CLI which models the signed-in account may actually use.
+ *
+ * Falls back to the agent's static list whenever the CLI cannot answer — an
+ * older build without the command, no network, a signed-out account — so the
+ * connect flow always has something to offer.
+ */
+export async function listModels(
+  agent: CliAgent,
+  command: string,
+): Promise<{ models: AgentModel[]; live: boolean }> {
+  const fallback = { models: agent.models.map((id) => ({ id })), live: false };
+  if (!agent.listModels) return fallback;
+
+  const result = await runCli(command, agent.listModels.args, timeouts.models);
+  if (!result.ok) return fallback;
+
+  try {
+    const models = agent.listModels.parse(result.stdout || result.stderr);
+    return models.length > 0 ? { models, live: true } : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 /**
@@ -124,4 +139,4 @@ export async function handshakeAgent(
   }
 }
 
-export type { AgentAuth, AgentStatus, CliAgent } from './types.js';
+export type { AgentAuth, AgentModel, AgentStatus, CliAgent } from './types.js';

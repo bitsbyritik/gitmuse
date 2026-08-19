@@ -24,8 +24,8 @@ npm install -g gitmuse
 ## features
 
 - **zero config to start** — works with Ollama out of the box, no API key needed
-- **connect an agent you already pay for** — `gm connect` borrows Claude Code or Codex CLI, so a
-  Claude Pro/Max subscription or a ChatGPT plan generates your commit messages with no API key at all
+- **connect an agent you already pay for** — `gm connect` borrows Claude Code, Codex CLI or Cursor
+  CLI, so a subscription you already have generates your commit messages with no API key at all
 - **free cloud tier** — Groq's free API gives you 14,000 requests/day at zero cost
 - **any provider** — Ollama, OpenAI, Groq, Anthropic, Gemini, or any OpenAI-compatible endpoint
 - **conventional commits** — picks the right type per diff (`fix`, `docs`, `refactor`, …), with a
@@ -52,11 +52,12 @@ npm install -g gitmuse
 
 ### option 1 — connect an agent you already pay for (no API key)
 
-Already signed in to Claude Code (Claude Pro/Max) or Codex CLI (a ChatGPT plan)? Borrow it:
+Already signed in to Claude Code, Codex CLI, or Cursor CLI? Borrow it:
 
 ```bash
 npm install -g gitmuse
-gm connect          # pick the agent, checks your sign-in, sends a test request
+gm connect          # finds what you have installed, checks your sign-in,
+                    # asks the agent which models you can use, sends a test request
 
 git add .
 gm
@@ -125,6 +126,7 @@ gm --provider openai
 gm connect
 gm connect claude-code --model sonnet
 gm connect codex --model gpt-5.5
+gm connect cursor --model composer-2.5
 gm connect --list
 
 # install as a git hook (runs on every git commit)
@@ -174,9 +176,15 @@ Connected agents store their settings under `agents.<id>`:
 | `agents.codex.model`           | `default` | model to ask for; `default` names none  |
 | `agents.codex.command`         | `codex`   | path/name of the executable to spawn    |
 | `agents.codex.timeoutMs`       | `120000`  | how long to wait for the agent to reply |
+| `agents.cursor.model`          | `auto`    | model to ask the agent for              |
+| `agents.cursor.command`        | `cursor-agent` | path/name of the executable to spawn |
+| `agents.cursor.timeoutMs`      | `120000`  | how long to wait for the agent to reply |
 
 `agents.codex.model` is `default` on purpose: which slugs a Codex account may request depends on the
 plan and the CLI version, so gitmuse passes no `--model` unless you name one.
+
+`gm connect` fills `model` in for you by asking the agent what your account may actually run, so you
+rarely need to set it by hand.
 
 ### provider setup
 
@@ -289,36 +297,53 @@ gm connect --list     # who is installed, who is signed in, what is in use
 
   ◉  Claude Code   signed in · you@example.com · pro · v2.1.235  ← in use
   ●  Codex CLI     signed in · v0.139.0
-  ·  Gemini CLI    coming soon — contributions welcome
+  ●  Cursor CLI    signed in · you@example.com · v2026.7.9
 ```
 
 **Supported today**
 
-| agent           | vendor    | runs on                                                                            | install                                    |
-| --------------- | --------- | ---------------------------------------------------------------------------------- | ------------------------------------------ |
-| **Claude Code** | Anthropic | your Claude Pro/Max subscription (or its API key, if that is how you set it up)    | `npm install -g @anthropic-ai/claude-code` |
-| **Codex CLI**   | OpenAI    | your ChatGPT Plus/Pro/Business plan (or its API key, if that is how you set it up) | `npm install -g @openai/codex`             |
+| agent           | vendor    | runs on                                                                           | install                                    |
+| --------------- | --------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
+| **Claude Code** | Anthropic | your Claude Pro/Max subscription (or its API key, if that is how you set it up)     | `npm install -g @anthropic-ai/claude-code` |
+| **Codex CLI**   | OpenAI    | your ChatGPT Plus/Pro/Business plan (or its API key, if that is how you set it up)  | `npm install -g @openai/codex`             |
+| **Cursor CLI**  | Cursor    | your Cursor subscription (or its API key, if that is how you set it up)             | `curl https://cursor.com/install -fsS \| bash` |
 
 The registry in `src/agents/index.ts` takes one definition file per agent, so adding another is a
 small PR (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent)).
 
 **How it works**
 
-`gm connect` runs the agent's `--version` to find the binary and its own status command
-(`claude auth status`, `codex login status`) to see who is signed in, then sends one tiny prompt to
-prove the whole path works before saving anything. At commit time gitmuse runs the agent
-non-interactively (`claude -p`, `codex exec --json`) from a temp dir, not your repo, so your
-project's agent instructions, hooks and MCP servers never enter the request — and Codex runs in its
-`read-only` sandbox, since writing a commit message needs no write access to anything.
+*Detection.* `gm connect` looks for each agent's executable across your PATH, and then across the
+directories these installers actually write to (`~/.local/bin`, `~/.claude/local`, `~/.bun/bin`,
+Homebrew, …). That last part matters: a git hook or a GUI-launched terminal often has a thinner PATH
+than your shell, and "not installed" is the wrong answer when the binary is right there. When one
+turns up off PATH, gitmuse pins its absolute path in config so every later run finds it too.
 
-**gitmuse never touches your credentials.** It does not read `~/.claude` or `~/.codex/auth.json`,
-does not copy tokens, and stores no secret of its own — the agent's CLI authenticates itself,
-exactly as it does when you use it directly. (Extracting a subscription token to call the API
-yourself is against these vendors' terms; this feature exists so nobody needs to.)
+*Sign-in.* Each agent's own status command answers who you are — `claude auth status --json`,
+`codex login status`, `cursor-agent status --format json`. All the probes run concurrently, because
+some of these CLIs take seconds just to boot.
+
+*Models.* Agents that can list their catalogue are asked for it, so you pick from what your account
+may actually run rather than a list hardcoded here — Cursor reports 200+ models, which is why long
+lists get a type-to-filter prompt. Agents with no such command fall back to gitmuse's defaults.
+
+*Generating.* At commit time gitmuse runs the agent non-interactively (`claude -p`,
+`codex exec --json`, `cursor-agent -p`) from a temp dir, not your repo, so your project's agent
+instructions, hooks and MCP servers never enter the request. Codex runs in its `read-only` sandbox
+and Cursor in `--mode ask`, since writing a commit message needs no write access to anything.
+
+Every subprocess goes through [execa](https://github.com/sindresorhus/execa) — one place that owns
+timeouts, missing binaries and non-zero exits, so a new agent inherits all of it.
+
+**gitmuse never touches your credentials.** It does not read `~/.claude`, `~/.codex/auth.json` or
+`~/.cursor`, does not copy tokens, and stores no secret of its own — the agent's CLI authenticates
+itself, exactly as it does when you use it directly. (Extracting a subscription token to call the
+API yourself is against these vendors' terms; this feature exists so nobody needs to.)
 
 **Trade-offs**
 
-- **slower** — ~5–10s, because a full agent CLI boots per commit (vs ~1–2s for a direct API call)
+- **slower** — ~10–30s, because a full agent CLI boots per commit (vs ~1–2s for a direct API call).
+  Claude Code is the quickest of the three; Cursor's CLI takes several seconds just to start
 - **counts against your plan** — the same rate limits as your interactive sessions
 - **local only** — CI has no signed-in CLI, so keep an API-key provider configured there
 
@@ -391,8 +416,9 @@ Then register it in `src/adapters/index.ts` and open a PR. Contributions welcome
 
 ### adding an agent
 
-Agents (Claude Code, Codex CLI, …) need no adapter — `src/adapters/cli-agent.ts` already handles
-spawning, streaming, timeouts and errors for all of them. You write one definition:
+Agents (Claude Code, Codex CLI, Cursor CLI) need no adapter — `src/adapters/cli-agent.ts` already
+handles spawning, streaming, timeouts and errors for all of them, and `src/agents/detect.ts` handles
+finding the binary. You write one definition:
 
 ```typescript
 // src/agents/my-agent.ts
@@ -413,12 +439,18 @@ export const myAgent: CliAgent = {
   authArgs: ['auth', 'status', '--json'],
   parseAuth: (out) => ({ connected: JSON.parse(out).loggedIn === true }),
 
+  // Optional: ask the CLI what the signed-in account may actually run.
+  listModels: {
+    args: ['models', '--json'],
+    parse: (out) => JSON.parse(out).map((m) => ({ id: m.id, label: m.name })),
+  },
+
   buildInvocation: (model, tier) => ({
     args: ['--print', '--model', model],
     format: 'text',
   }),
 
-  parseEvent: (line) => ({ type: 'text', text: line }),
+  parseEvent: (line, state) => ({ type: 'text', text: line }),
 };
 ```
 

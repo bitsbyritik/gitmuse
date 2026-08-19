@@ -84,7 +84,7 @@ export function getConfig(overrides: Partial<Config> = {}): Config {
   };
 }
 
-/** Returns true if the user has never run `gm setup` or manually set config. */
+/** Returns true if the user has never run `gitmuse setup` or manually set config. */
 export function isFirstRun(): boolean {
   return !store.has('provider');
 }
@@ -99,7 +99,7 @@ export function saveConfig(partial: Partial<Config>): void {
   }
 }
 
-/** Handler for `gm config <action> [key] [value]`. */
+/** Handler for `gitmuse config <action> [key] [value]`. */
 export function manageConfig(action: string, key?: string, value?: string): void {
   switch (action) {
     case 'list': {

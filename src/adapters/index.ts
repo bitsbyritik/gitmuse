@@ -13,7 +13,7 @@ export async function resolveAdapter(config: Config): Promise<BaseAdapter> {
     const agent = findAgent(config.provider);
     if (!agent) {
       throw new ConfigError(
-        `Provider "${config.provider}" is not a registered agent. Run \`gm connect\`.`,
+        `Provider "${config.provider}" is not a registered agent. Run \`gitmuse connect\`.`,
       );
     }
     const { CliAgentAdapter } = await import('./cli-agent.js');

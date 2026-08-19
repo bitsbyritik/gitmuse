@@ -59,7 +59,7 @@ export class HookError extends GitMuseError {
 export class MissingApiKeyError extends GitMuseError {
   constructor(provider: string, envVar: string) {
     super(
-      `Missing API key for ${provider}. Set ${envVar} or run \`gm setup\`.`,
+      `Missing API key for ${provider}. Set ${envVar} or run \`gitmuse setup\`.`,
       'MISSING_API_KEY',
     );
     this.name = 'MissingApiKeyError';

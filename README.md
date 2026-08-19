@@ -24,7 +24,7 @@ npm install -g gitmuse
 ## features
 
 - **zero config to start** — works with Ollama out of the box, no API key needed
-- **connect an agent you already pay for** — `gm connect` borrows Claude Code, Codex CLI or Cursor
+- **connect an agent you already pay for** — `gitmuse connect` borrows Claude Code, Codex CLI or Cursor
   CLI, so a subscription you already have generates your commit messages with no API key at all
 - **free cloud tier** — Groq's free API gives you 14,000 requests/day at zero cost
 - **any provider** — Ollama, OpenAI, Groq, Anthropic, Gemini, or any OpenAI-compatible endpoint
@@ -35,8 +35,11 @@ npm install -g gitmuse
 - **live streaming** — watch tokens appear as they generate
 - **know what it cost** — a token badge after every message, with a price when gitmuse knows the
   model's rate; connected agents show tokens only, since they bill a plan you already pay for
-- **interactive TUI** — edit, regenerate, or confirm before anything is committed
-- **git hook support** — `gm install` fills in the message on every `git commit` (husky-aware)
+- **interactive TUI** — edit the subject inline, open `$EDITOR`, page through the diff that was
+  actually sent, or regenerate with a hint ("it's a fix, not a feat") before anything is committed
+- **never a dead end** — forgot to `git add`? it offers to stage everything. Half-staged? it tells you
+  what this commit will leave behind
+- **git hook support** — `gitmuse install` fills in the message on every `git commit` (husky-aware)
 - **tiny footprint** — single ESM bundle, Node 18+, no native deps
 
 ## why gitmuse
@@ -45,7 +48,7 @@ npm install -g gitmuse
 - **works offline** — Ollama runs entirely on your machine; your diff never leaves
 - **tokens stream live** — you see the message build word by word, not a spinner then a wall of text
 - **your keys, your data** — gitmuse never proxies your requests; it calls provider APIs directly from your machine
-- **6 providers + connected agents, one command to switch** — `gm --provider gemini` overrides for a single run without touching config
+- **6 providers + connected agents, one command to switch** — `gitmuse --provider gemini` overrides for a single run without touching config
 - **no credential handling for agents** — gitmuse never reads another tool's tokens; it runs that tool's own CLI, which authenticates itself
 
 ---
@@ -58,11 +61,11 @@ Already signed in to Claude Code, Codex CLI, or Cursor CLI? Borrow it:
 
 ```bash
 npm install -g gitmuse
-gm connect          # finds what you have installed, checks your sign-in,
+gitmuse connect          # finds what you have installed, checks your sign-in,
                     # asks the agent which models you can use, sends a test request
 
 git add .
-gm
+gitmuse
 ```
 
 Nothing is stored but your choice of agent and model — the agent's own CLI keeps owning the
@@ -74,11 +77,11 @@ credential.
 npm install -g gitmuse
 
 # get a free API key at console.groq.com (no credit card)
-gm config set provider groq
-gm config set groq.apiKey YOUR_KEY_HERE
+gitmuse config set provider groq
+gitmuse config set groq.apiKey YOUR_KEY_HERE
 
 git add .
-gm
+gitmuse
 ```
 
 ### option 3 — 100% offline with Ollama
@@ -88,14 +91,14 @@ gm
 ollama pull llama3
 
 npm install -g gitmuse
-gm
+gitmuse
 ```
 
 ### option 4 — first run wizard
 
 ```bash
 npm install -g gitmuse
-gm setup   # interactive setup, picks your provider
+gitmuse setup   # interactive setup, picks your provider
 ```
 
 ---
@@ -104,45 +107,73 @@ gm setup   # interactive setup, picks your provider
 
 ```bash
 # generate a commit message for staged changes
-gm
-
-# short alias
 gitmuse
 
 # stage everything and commit in one step
-git add . && gm
+git add . && gitmuse
 
 # skip the TUI, commit immediately
-gm --yes
+gitmuse --yes
 
 # regenerate without re-reading the diff
-gm --retry
+gitmuse --retry
 
 # preview the message without committing
-gm --dry-run
+gitmuse --dry-run
 
 # use a specific provider for this run
-gm --provider openai
+gitmuse --provider openai
 
 # connect / re-check a local coding agent
-gm connect
-gm connect claude-code --model sonnet
-gm connect codex --model gpt-5.5
-gm connect cursor --model composer-2.5
-gm connect --list
+gitmuse connect
+gitmuse connect claude-code --model sonnet
+gitmuse connect codex --model gpt-5.5
+gitmuse connect cursor --model composer-2.5
+gitmuse connect --list
 
 # install as a git hook (fills in the message on every plain `git commit`)
-gm install
+gitmuse install
 ```
 
-### keyboard shortcuts in TUI
+### the short command
 
-| key         | action                     |
-| ----------- | -------------------------- |
-| `Enter`     | confirm and commit         |
-| `e`         | open in editor (`$EDITOR`) |
-| `r`         | regenerate message         |
-| `q` / `Esc` | abort                      |
+The package installs two binaries, `gitmuse` and `gm`, so the short one works out
+of the box:
+
+```bash
+gm --yes
+```
+
+If `gm` is taken on your machine — GraphicsMagick ships a binary by that name —
+use `gitmuse` and add your own alias instead:
+
+```bash
+echo "alias gm='gitmuse'" >> ~/.zshrc
+```
+
+A shell alias is enough for your own typing, but **not** for the git hook: hooks
+run under `sh` as a child of git and never read your `.zshrc`, so the installed
+hook always calls `gitmuse` by name.
+
+### the review menu
+
+After the message is generated you get a menu. Arrow keys to move, `Enter` to
+choose, `Ctrl+C` to leave without committing.
+
+| action              | what it does                                                     |
+| ------------------- | ---------------------------------------------------------------- |
+| `Commit`            | commit with the message as shown                                  |
+| `Edit subject`      | fix the subject line inline, without leaving the terminal         |
+| `Edit in $EDITOR`   | open subject and body in your editor                              |
+| `Retry with a hint` | say what was wrong — "it's a fix, not a feat" — and regenerate    |
+| `Retry`             | regenerate from scratch                                           |
+| `View staged diff`  | page through the exact diff gitmuse sent, trimming included       |
+| `Abort`             | commit nothing                                                    |
+
+`Retry with a hint` is the one to reach for when the type or scope is wrong. A
+plain retry re-sends an identical prompt and usually comes back with an almost
+identical message; the hint is appended after the diff, where the model weights
+it most heavily.
 
 ---
 
@@ -151,10 +182,10 @@ gm install
 Config lives at `~/.config/gitmuse/config.json` and is managed via:
 
 ```bash
-gm config set <key> <value>
-gm config get <key>
-gm config list
-gm config reset
+gitmuse config set <key> <value>
+gitmuse config get <key>
+gitmuse config list
+gitmuse config reset
 ```
 
 ### all options
@@ -186,7 +217,7 @@ Connected agents store their settings under `agents.<id>`:
 `agents.codex.model` is `default` on purpose: which slugs a Codex account may request depends on the
 plan and the CLI version, so gitmuse passes no `--model` unless you name one.
 
-`gm connect` fills `model` in for you by asking the agent what your account may actually run, so you
+`gitmuse connect` fills `model` in for you by asking the agent what your account may actually run, so you
 rarely need to set it by hand.
 
 ### provider setup
@@ -194,41 +225,41 @@ rarely need to set it by hand.
 **Ollama (local, free, offline)**
 
 ```bash
-gm config set provider ollama
-gm config set ollama.model llama3        # or mistral, codellama, etc.
-gm config set ollama.baseURL http://localhost:11434
+gitmuse config set provider ollama
+gitmuse config set ollama.model llama3        # or mistral, codellama, etc.
+gitmuse config set ollama.baseURL http://localhost:11434
 ```
 
 **Groq (cloud, free tier)**
 
 ```bash
-gm config set provider groq
-gm config set groq.apiKey gsk_xxxxxxxxxxxx
-gm config set groq.model openai/gpt-oss-120b
+gitmuse config set provider groq
+gitmuse config set groq.apiKey gsk_xxxxxxxxxxxx
+gitmuse config set groq.model openai/gpt-oss-120b
 ```
 
 **OpenAI**
 
 ```bash
-gm config set provider openai
-gm config set openai.apiKey sk-xxxxxxxxxxxx
-gm config set openai.model gpt-4o-mini
+gitmuse config set provider openai
+gitmuse config set openai.apiKey sk-xxxxxxxxxxxx
+gitmuse config set openai.model gpt-4o-mini
 ```
 
 **Anthropic**
 
 ```bash
-gm config set provider anthropic
-gm config set anthropic.apiKey sk-ant-xxxxxxxxxxxx
-gm config set anthropic.model claude-haiku-4-5
+gitmuse config set provider anthropic
+gitmuse config set anthropic.apiKey sk-ant-xxxxxxxxxxxx
+gitmuse config set anthropic.model claude-haiku-4-5
 ```
 
 **Gemini (cloud, free tier)**
 
 ```bash
-gm config set provider gemini
-gm config set gemini.apiKey YOUR_KEY_HERE   # free at aistudio.google.com
-gm config set gemini.model gemini-2.5-flash # optional — this is the default
+gitmuse config set provider gemini
+gitmuse config set gemini.apiKey YOUR_KEY_HERE   # free at aistudio.google.com
+gitmuse config set gemini.model gemini-2.5-flash # optional — this is the default
 ```
 
 Available free-tier models:
@@ -242,10 +273,10 @@ Available free-tier models:
 **Custom OpenAI-compatible endpoint** (LM Studio, Jan, vLLM, etc.)
 
 ```bash
-gm config set provider custom
-gm config set custom.baseURL http://localhost:1234/v1
-gm config set custom.apiKey optional-key
-gm config set custom.model your-model-name
+gitmuse config set provider custom
+gitmuse config set custom.baseURL http://localhost:1234/v1
+gitmuse config set custom.apiKey optional-key
+gitmuse config set custom.model your-model-name
 ```
 
 ---
@@ -291,8 +322,8 @@ Instead of giving gitmuse a key, you can point it at a coding CLI you are **alre
 gitmuse spawns that CLI in non-interactive mode and streams back what it prints.
 
 ```bash
-gm connect            # pick an agent, sign in if needed, pick a model, test it
-gm connect --list     # who is installed, who is signed in, what is in use
+gitmuse connect            # pick an agent, sign in if needed, pick a model, test it
+gitmuse connect --list     # who is installed, who is signed in, what is in use
 ```
 
 ```
@@ -316,7 +347,7 @@ small PR (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent)).
 
 **How it works**
 
-_Detection._ `gm connect` looks for each agent's executable across your PATH, and then across the
+_Detection._ `gitmuse connect` looks for each agent's executable across your PATH, and then across the
 directories these installers actually write to (`~/.local/bin`, `~/.claude/local`, `~/.bun/bin`,
 Homebrew, …). That last part matters: a git hook or a GUI-launched terminal often has a thinner PATH
 than your shell, and "not installed" is the wrong answer when the binary is right there. When one
@@ -402,7 +433,7 @@ figure. Claude and Cursor report it separately (gitmuse sums them); Codex alread
 Turn the badge off with:
 
 ```bash
-gm config set showUsage false
+gitmuse config set showUsage false
 ```
 
 ---
@@ -412,13 +443,13 @@ gm config set showUsage false
 Install once per repo, and a plain `git commit` opens your editor with the message already written:
 
 ```bash
-gm install
+gitmuse install
 ```
 
 You still see and approve the message — the hook fills it in, git commits it. Edit it, or delete it
 and write your own; nothing is committed until you save and close.
 
-**Where it goes.** `gm install` asks git where it actually looks for hooks (`core.hooksPath`), not
+**Where it goes.** `gitmuse install` asks git where it actually looks for hooks (`core.hooksPath`), not
 just `.git/hooks`. In a repo using husky it installs to `.husky/prepare-commit-msg`, alongside your
 other husky hooks, because husky regenerates `.husky/_` and the files in there only delegate
 upwards. Committing that file shares the hook with everyone on the repo — leave it untracked if you
@@ -427,13 +458,18 @@ would rather it stayed yours.
 **What it skips.** Anything that already has a message: `git commit -m`, `--amend`, merges, squashes
 and commit templates. Only a plain `git commit` gets a generated one.
 
-**It cannot block a commit.** If `gm` is missing, misconfigured or fails, the hook says so on stderr
+**It cannot block a commit.** If `gitmuse` is missing, misconfigured or fails, the hook says so on stderr
 and exits cleanly — git opens your editor as it always would.
+
+**It calls `gitmuse`, not `gm`.** Git runs hooks through `sh`, which never reads your `.zshrc` or
+`.bashrc`, so a shell alias does not exist inside the hook. The installed hook looks for the real
+`gitmuse` executable first and only falls back to `gm` — which is also GraphicsMagick's binary — if
+`gitmuse` is not on PATH.
 
 To remove:
 
 ```bash
-gm uninstall
+gitmuse uninstall
 ```
 
 ---
@@ -509,7 +545,7 @@ export const myAgent: CliAgent = {
 ```
 
 Add the id to `AgentProviderName` in `src/types.ts`, push the definition into `CLI_AGENTS` in
-`src/agents/index.ts`, and `gm connect` lists it. Full checklist in
+`src/agents/index.ts`, and `gitmuse connect` lists it. Full checklist in
 [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent).
 
 ---
@@ -542,7 +578,7 @@ cd gitmuse
 npm install
 npm run dev        # watch mode
 node dist/cli.js   # test locally
-npm link           # makes `gm` available globally from your local build
+npm link           # makes `gitmuse` available globally from your local build
 ```
 
 Before opening a PR:
@@ -553,7 +589,7 @@ npm run lint
 npm run test
 ```
 
-Commit messages must follow conventional commits — feel free to use `gm` itself to generate them.
+Commit messages must follow conventional commits — feel free to use `gitmuse` itself to generate them.
 
 ---
 

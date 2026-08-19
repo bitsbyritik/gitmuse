@@ -1,6 +1,7 @@
 import { program } from 'commander';
 import { createRequire } from 'module';
 import { handleFatalError } from '../src/errors.js';
+import { wordmark } from '../src/brand.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json') as { version: string };
@@ -14,7 +15,7 @@ process.on('SIGINT', () => {
 program
   .name('gitmuse')
   .description('AI-generated commit messages in seconds')
-  .version(pkg.version)
+  .version(`${wordmark('gitmuse')} v${pkg.version}`)
   .option('-y, --yes', 'skip confirmation, commit immediately')
   .option('-d, --dry-run', 'print message without committing')
   .option('-r, --retry', 'regenerate without re-reading diff')

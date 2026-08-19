@@ -7,7 +7,12 @@ vi.mock('child_process', () => ({
 }));
 
 import { execSync, spawnSync } from 'child_process';
-import { getStagedDiff, isGitRepo, getCurrentBranch } from '../src/git.js';
+import {
+  getStagedDiff,
+  isGitRepo,
+  getCurrentBranch,
+  getWorktreeState,
+} from '../src/git.js';
 import { NoStagedChangesError, NotAGitRepoError } from '../src/errors.js';
 
 const mockedExecSync = vi.mocked(execSync);
@@ -215,5 +220,42 @@ describe('getCurrentBranch', () => {
       throw new Error('not a repo');
     });
     expect(getCurrentBranch()).toBe('HEAD');
+  });
+});
+
+describe('getWorktreeState', () => {
+  /** `git status --porcelain` output: column 1 is the index, column 2 the worktree. */
+  const status = (out: string): void => {
+    mockedExecSync.mockReturnValue(out);
+  };
+
+  it('separates unstaged edits from untracked files', () => {
+    status('?? notes.md\n M src/app.ts\n');
+
+    expect(getWorktreeState()).toEqual({
+      unstaged: ['src/app.ts'],
+      untracked: ['notes.md'],
+    });
+  });
+
+  it('ignores files that are fully staged', () => {
+    status('M  src/staged.ts\nA  src/added.ts\n');
+    expect(getWorktreeState()).toEqual({ unstaged: [], untracked: [] });
+  });
+
+  it('counts a partially staged file as unstaged', () => {
+    // Staged edits AND further edits on top — the commit gets only the first half.
+    status('MM src/half.ts\n');
+    expect(getWorktreeState().unstaged).toEqual(['src/half.ts']);
+  });
+
+  it('reports a deletion that was never staged', () => {
+    status(' D src/gone.ts\n');
+    expect(getWorktreeState().unstaged).toEqual(['src/gone.ts']);
+  });
+
+  it('is empty for a clean tree', () => {
+    status('');
+    expect(getWorktreeState()).toEqual({ unstaged: [], untracked: [] });
   });
 });

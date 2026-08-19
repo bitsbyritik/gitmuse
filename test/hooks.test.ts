@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execaSync } from 'execa';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+  chmodSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { installHook, uninstallHook, writeMessageFile } from '../src/hooks.js';
@@ -67,7 +75,7 @@ describe('installHook', () => {
     installHook(repo);
 
     const updated = readFileSync(hookPath, 'utf8');
-    expect(updated).toContain('gm --write "$1"');
+    expect(updated).toContain('"$muse" --write "$1"');
     expect(updated).not.toContain('gm --yes');
   });
 
@@ -86,7 +94,7 @@ describe('the installed hook script', () => {
 
     // A nested `git commit` here cannot lock HEAD — that was the old bug.
     expect(script).not.toMatch(/gm\s+--yes/);
-    expect(script).toContain('gm --write "$1"');
+    expect(script).toContain('"$muse" --write "$1"');
   });
 
   it('skips every commit that already has a message', () => {
@@ -99,9 +107,76 @@ describe('the installed hook script', () => {
     installHook(repo);
     const script = readFileSync(join(repo, '.git', 'hooks', 'prepare-commit-msg'), 'utf8');
     // Both the missing-binary path and a failed run must fall through to exit 0.
-    expect(script).toContain('if ! gm --write "$1"; then');
-    expect(script).not.toMatch(/^\s*gm --write .*[^n]$/m); // never an unguarded call
+    expect(script).toContain('if ! "$muse" --write "$1"; then');
+    expect(script).not.toMatch(/^\s*"\$muse" --write .*[^n]$/m); // never an unguarded call
     expect(script.trimEnd().endsWith('exit 0')).toBe(true);
+  });
+});
+
+/**
+ * Runs the installed hook the way git does — `sh <hook> <msgfile>` — against a
+ * PATH containing only the stub binaries named here. Returns what the hook left
+ * in the message file.
+ */
+function runHookWith(binaries: Record<string, string>): {
+  message: string;
+  stderr: string;
+} {
+  installHook(repo);
+  const hook = join(repo, '.git', 'hooks', 'prepare-commit-msg');
+
+  const bin = mkdtempSync(join(tmpdir(), 'gitmuse-bin-'));
+  for (const [name, body] of Object.entries(binaries)) {
+    const file = join(bin, name);
+    writeFileSync(file, body, 'utf8');
+    chmodSync(file, 0o755);
+  }
+
+  const messageFile = join(bin, 'COMMIT_EDITMSG');
+  writeFileSync(messageFile, '', 'utf8');
+
+  // Absolute shell on purpose: PATH holds only the stubs, so an `sh` lookup
+  // through it would fail before the hook ever ran.
+  const result = execaSync('/bin/sh', [hook, messageFile], {
+    env: { PATH: bin },
+    extendEnv: false,
+    reject: false,
+  });
+
+  const message = readFileSync(messageFile, 'utf8').trim();
+  rmSync(bin, { recursive: true, force: true });
+  return { message, stderr: result.stderr };
+}
+
+/** A stub that records which binary git actually reached. `$2` is the message file. */
+const stub = (name: string): string => `#!/bin/sh\necho "from ${name}" > "$2"\n`;
+
+describe('which binary the hook calls', () => {
+  it('prefers `gitmuse` over `gm` when both are on PATH', () => {
+    // `gm` is also GraphicsMagick's binary, so the long name has to win.
+    const { message } = runHookWith({ gitmuse: stub('gitmuse'), gm: stub('gm') });
+    expect(message).toBe('from gitmuse');
+  });
+
+  it('falls back to `gm` when only the short name is installed', () => {
+    const { message } = runHookWith({ gm: stub('gm') });
+    expect(message).toBe('from gm');
+  });
+
+  it('leaves the message alone and still exits 0 when neither is on PATH', () => {
+    // A shell alias lives in .zshrc, which this hook never reads — so an alias
+    // looks exactly like this, and must not break the commit.
+    const { message, stderr } = runHookWith({});
+    expect(message).toBe('');
+    expect(stderr).toContain('not found on PATH');
+  });
+
+  it('never runs a nested `git commit`', () => {
+    const { message } = runHookWith({
+      gitmuse: stub('gitmuse'),
+      git: '#!/bin/sh\necho "NESTED COMMIT" > /dev/stderr\nexit 1\n',
+    });
+    expect(message).toBe('from gitmuse');
   });
 });
 

@@ -9,7 +9,7 @@ export type HttpProviderName =
 
 /**
  * Local coding agents gitmuse borrows instead of holding a key — you connect
- * them with `gm connect`. Add a new agent's id here and register it in
+ * them with `gitmuse connect`. Add a new agent's id here and register it in
  * `src/agents/index.ts`.
  */
 export type AgentProviderName = 'claude-code' | 'codex' | 'cursor';
@@ -151,9 +151,16 @@ export interface RunOptions {
   write?: string;
 }
 
-export type TuiAction = 'commit' | 'edit' | 'retry' | 'abort';
+export type TuiAction = 'commit' | 'retry' | 'abort';
 
 export interface TuiResult {
   action: TuiAction;
   message: string;
+  /**
+   * Free-text correction for a retry — "it's a fix, not a feat".
+   *
+   * A plain retry re-sends a byte-identical prompt and tends to come back with
+   * a near-identical message; the hint is what actually changes the answer.
+   */
+  hint?: string;
 }

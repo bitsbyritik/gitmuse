@@ -79,7 +79,7 @@ async function isExecutable(path: string): Promise<boolean> {
  * path is checked as-is, so a user's `agents.<id>.command` override always wins.
  *
  * Returns the path to run and whether it had to be found outside PATH — that
- * second bit is what lets `gm connect` offer to pin the absolute path.
+ * second bit is what lets `gitmuse connect` offer to pin the absolute path.
  */
 export async function locateBinary(
   command: string,

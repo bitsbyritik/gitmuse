@@ -104,7 +104,33 @@ ${lines.join('\n')}
 `;
 }
 
-export function buildPrompt(diff: DiffResult, config: Config): string {
+/** Longest correction we will pass through — well past a sentence, short of a novel. */
+const MAX_HINT_LENGTH = 500;
+
+/**
+ * The developer's correction, placed after the diff.
+ *
+ * Last position on purpose: the diff can run to hundreds of lines, and an
+ * instruction buried above it competes with everything that follows. Models
+ * weight the final instruction most heavily, which is exactly what a correction
+ * needs.
+ */
+function renderHint(hint: string | undefined): string {
+  const text = hint?.trim().slice(0, MAX_HINT_LENGTH);
+  if (!text) return '';
+
+  return `
+
+## Correction from the developer — this overrides the guidance above
+Your previous message was not what they wanted. They said:
+
+"${text}"
+
+Rewrite the commit message so it follows this instruction exactly, while still
+obeying the format rules. Output ONLY the new commit message.`;
+}
+
+export function buildPrompt(diff: DiffResult, config: Config, hint?: string): string {
   const useEmoji = config.emoji;
 
   const typeGuide = COMMIT_TYPES.map((t) =>
@@ -169,7 +195,7 @@ Branch: ${diff.branch}
 
 \`\`\`diff
 ${diff.diff}
-\`\`\``;
+\`\`\`${renderHint(hint)}`;
 }
 
 /**

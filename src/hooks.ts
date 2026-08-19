@@ -7,10 +7,10 @@ import { HookError } from './errors.js';
 const HOOK_MARKER = '# gitmuse-managed-hook';
 
 /**
- * Bumped whenever HOOK_SCRIPT changes, so `gm install` can replace a stale hook
- * instead of reporting "already installed" and leaving the old one in place.
+ * Bumped whenever HOOK_SCRIPT changes, so `gitmuse install` can replace a stale
+ * hook instead of reporting "already installed" and leaving the old one in place.
  */
-const HOOK_VERSION = 2;
+const HOOK_VERSION = 3;
 const VERSION_TAG = `# gitmuse-hook-version: ${String(HOOK_VERSION)}`;
 
 /**
@@ -22,7 +22,7 @@ const VERSION_TAG = `# gitmuse-hook-version: ${String(HOOK_VERSION)}`;
 const HOOK_SCRIPT = `#!/bin/sh
 ${HOOK_MARKER}
 ${VERSION_TAG}
-# Installed by gitmuse. Remove with: gm uninstall
+# Installed by gitmuse. Remove with: gitmuse uninstall
 #
 # $1 is the file git will take the commit message from.
 # $2 says where that message came from — and anything with a source already has
@@ -32,14 +32,23 @@ if [ -n "$2" ]; then
   exit 0
 fi
 
-if ! command -v gm >/dev/null 2>&1; then
-  echo "gitmuse: 'gm' is not on PATH — leaving the commit message to you." >&2
+# The npm package installs both \`gitmuse\` and the short \`gm\`, and this hook must
+# find a real executable: git runs it under sh, which never reads .zshrc or
+# .bashrc, so a shell alias does not exist here. \`gitmuse\` is tried first because
+# GraphicsMagick also ships a binary called \`gm\`.
+if command -v gitmuse >/dev/null 2>&1; then
+  muse=gitmuse
+elif command -v gm >/dev/null 2>&1; then
+  muse=gm
+else
+  echo "gitmuse: not found on PATH — leaving the commit message to you." >&2
+  echo "gitmuse: install it with  npm i -g gitmuse" >&2
   exit 0
 fi
 
 # Never block a commit. If generation fails you still get your editor, with
 # whatever git had already put in the file.
-if ! gm --write "$1"; then
+if ! "$muse" --write "$1"; then
   echo "gitmuse: no message generated — write one yourself." >&2
   echo "gitmuse: if that said 'unknown option --write', upgrade: npm i -g gitmuse" >&2
 fi
@@ -99,7 +108,7 @@ export function installHook(cwd: string = process.cwd()): void {
 
   if (!existsSync(dir)) {
     throw new HookError(
-      `Hooks directory does not exist:\n  ${dir}\n\nCreate it, then run \`gm install\` again.`,
+      `Hooks directory does not exist:\n  ${dir}\n\nCreate it, then run \`gitmuse install\` again.`,
     );
   }
 
@@ -109,7 +118,7 @@ export function installHook(cwd: string = process.cwd()): void {
     if (!existing.includes(HOOK_MARKER)) {
       throw new HookError(
         `A prepare-commit-msg hook already exists at:\n  ${hookPath}\n\n` +
-          'Remove it manually first, or add `gm --write "$1"` to it yourself.',
+          'Remove it manually first, or add `gitmuse --write "$1"` to it yourself.',
       );
     }
 

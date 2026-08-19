@@ -11,12 +11,12 @@ export class CustomAdapter extends BaseAdapter {
     super();
     if (!config.baseURL) {
       throw new ConfigError(
-        'Custom provider requires a baseURL. Run `gm setup` or: gm config set custom.baseURL <url>',
+        'Custom provider requires a baseURL. Run `gitmuse setup` or: gitmuse config set custom.baseURL <url>',
       );
     }
     if (!config.model) {
       throw new ConfigError(
-        'Custom provider requires a model name. Run: gm config set custom.model <name>',
+        'Custom provider requires a model name. Run: gitmuse config set custom.model <name>',
       );
     }
     // Many local servers accept any non-empty API key string

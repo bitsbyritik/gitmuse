@@ -222,6 +222,30 @@ describe('applyTypeEmoji', () => {
   });
 });
 
+describe('buildPrompt with a retry hint', () => {
+  it('omits the correction section when there is no hint', () => {
+    expect(buildPrompt(diff, DEFAULTS)).not.toContain('Correction from the developer');
+    expect(buildPrompt(diff, DEFAULTS, '   ')).not.toContain('Correction from the developer');
+  });
+
+  it('carries the developer\'s words through verbatim', () => {
+    const prompt = buildPrompt(diff, DEFAULTS, "it's a fix, not a feat");
+    expect(prompt).toContain('Correction from the developer');
+    expect(prompt).toContain('"it\'s a fix, not a feat"');
+  });
+
+  it('places the correction after the diff, where it carries most weight', () => {
+    const prompt = buildPrompt(diff, DEFAULTS, 'scope it to the parser');
+    expect(prompt.indexOf('scope it to the parser')).toBeGreaterThan(prompt.indexOf('+new'));
+  });
+
+  it('caps a runaway hint instead of pasting an essay into the prompt', () => {
+    const prompt = buildPrompt(diff, DEFAULTS, 'x'.repeat(2000));
+    expect(prompt).toContain('x'.repeat(500));
+    expect(prompt).not.toContain('x'.repeat(501));
+  });
+});
+
 describe('normalizeCommitMessage', () => {
   it('fixes the emoji and keeps the body', () => {
     const result = normalizeCommitMessage('✨ fix: handle null user\n\nGuards the lookup.', true);

@@ -260,6 +260,49 @@ export function getStagedDiff(maxLines: number): DiffResult {
   };
 }
 
+/** Work in the tree that this commit will NOT include. */
+export interface WorktreeState {
+  /** Tracked files with edits that were never staged. */
+  unstaged: string[];
+  /** Files git has never seen. */
+  untracked: string[];
+}
+
+/**
+ * What is dirty but not staged.
+ *
+ * Reported before generating so a half-staged commit is a choice rather than a
+ * surprise — the message describes the staged half, and the rest stays behind.
+ */
+export function getWorktreeState(): WorktreeState {
+  const unstaged: string[] = [];
+  const untracked: string[] = [];
+
+  for (const line of git('status --porcelain').split('\n')) {
+    if (!line.trim()) continue;
+
+    // `XY path` — X is the index column, Y the worktree column.
+    const index = line[0] ?? ' ';
+    const worktree = line[1] ?? ' ';
+    const path = line.slice(3).trim();
+    if (!path) continue;
+
+    if (index === '?' && worktree === '?') untracked.push(path);
+    else if (worktree !== ' ') unstaged.push(path);
+  }
+
+  return { unstaged, untracked };
+}
+
+/** Stages everything, including untracked files and deletions. */
+export function stageAll(): void {
+  const result = spawnSync('git', ['add', '-A'], { encoding: 'utf8', stdio: 'pipe' });
+
+  if (result.status !== 0) {
+    throw new GitError(result.stderr.trim() || 'git add -A failed.');
+  }
+}
+
 /**
  * Commits with the given message.
  * Uses spawnSync with an argument array — never interpolates message into a shell string.

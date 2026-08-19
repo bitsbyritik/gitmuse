@@ -6,6 +6,8 @@ import type {
   ArgTier,
   CliAgent,
 } from './types.js';
+import { nonEmptyUsage } from '../usage.js';
+import type { TokenUsage } from '../usage.js';
 
 /**
  * Replaces Claude Code's own coding-agent system prompt. gitmuse sends a
@@ -23,14 +25,39 @@ interface AuthStatusJson {
   email?: string;
 }
 
+interface ClaudeUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
 interface StreamJsonLine {
   type?: string;
   subtype?: string;
   is_error?: boolean;
   result?: string;
+  usage?: ClaudeUsage;
   event?: {
     type?: string;
     delta?: { type?: string; text?: string };
+  };
+}
+
+/**
+ * Claude reports `input_tokens` as the *uncached* input only, with cache reads
+ * and cache writes counted separately — verified against a live run where a
+ * ~10k-token prompt reported input_tokens: 9. Summing them gives the real
+ * prompt size.
+ */
+function readUsage(usage: ClaudeUsage): TokenUsage {
+  const cached = usage.cache_read_input_tokens ?? 0;
+  const written = usage.cache_creation_input_tokens ?? 0;
+
+  return {
+    inputTokens: (usage.input_tokens ?? 0) + cached + written,
+    outputTokens: usage.output_tokens ?? 0,
+    cachedInputTokens: cached || undefined,
   };
 }
 
@@ -134,7 +161,8 @@ export const claudeCode: CliAgent = {
           message: json.result?.trim() || json.subtype || 'the agent reported an error',
         };
       }
-      return { type: 'end' };
+      const usage = json.usage && nonEmptyUsage(readUsage(json.usage));
+      return usage ? { type: 'usage', usage } : { type: 'end' };
     }
 
     return undefined;

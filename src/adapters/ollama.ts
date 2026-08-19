@@ -6,6 +6,9 @@ interface OllamaChunk {
   response?: string;
   done?: boolean;
   error?: string;
+  /** Present on the final chunk only. */
+  prompt_eval_count?: number;
+  eval_count?: number;
 }
 
 export class OllamaAdapter extends BaseAdapter {
@@ -17,6 +20,7 @@ export class OllamaAdapter extends BaseAdapter {
   }
 
   async *stream(prompt: string): AsyncIterable<string> {
+    this.usage = undefined;
     const url = `${this.config.baseURL}/api/generate`;
     let response: Response;
 
@@ -65,7 +69,13 @@ export class OllamaAdapter extends BaseAdapter {
           }
           if (chunk.error) throw new ProviderError('ollama', chunk.error);
           if (chunk.response) yield chunk.response;
-          if (chunk.done) return;
+          if (chunk.done) {
+            this.usage = {
+              inputTokens: chunk.prompt_eval_count ?? 0,
+              outputTokens: chunk.eval_count ?? 0,
+            };
+            return;
+          }
         }
       }
     } finally {

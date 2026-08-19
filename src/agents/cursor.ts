@@ -7,11 +7,20 @@ import type {
   ArgTier,
   CliAgent,
 } from './types.js';
+import { nonEmptyUsage } from '../usage.js';
+import type { TokenUsage } from '../usage.js';
 
 interface StatusJson {
   isAuthenticated?: boolean;
   status?: string;
   userInfo?: { email?: string };
+}
+
+interface CursorUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 interface StreamJsonLine {
@@ -20,8 +29,25 @@ interface StreamJsonLine {
   is_error?: boolean;
   result?: string;
   message?: { content?: { type?: string; text?: string }[] };
+  usage?: CursorUsage;
   /** Present on incremental deltas, absent on the assembled final message. */
   timestamp_ms?: number;
+}
+
+/**
+ * Cursor reports `inputTokens` exclusive of cache, like Claude does — verified
+ * by running one prompt twice: 7017+10227 and 11243+6001 both total exactly
+ * 17244, so the parts sum to the prompt and the cache split moves between them.
+ */
+function readUsage(usage: CursorUsage): TokenUsage {
+  const cached = usage.cacheReadTokens ?? 0;
+  const written = usage.cacheWriteTokens ?? 0;
+
+  return {
+    inputTokens: (usage.inputTokens ?? 0) + cached + written,
+    outputTokens: usage.outputTokens ?? 0,
+    cachedInputTokens: cached || undefined,
+  };
 }
 
 /** `<id> - <label>`. */
@@ -160,7 +186,8 @@ export const cursorCli: CliAgent = {
           message: json.result?.trim() || json.subtype || 'the agent reported an error',
         };
       }
-      return { type: 'end' };
+      const usage = json.usage && nonEmptyUsage(readUsage(json.usage));
+      return usage ? { type: 'usage', usage } : { type: 'end' };
     }
 
     return undefined;

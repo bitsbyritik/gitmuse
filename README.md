@@ -33,6 +33,8 @@ npm install -g gitmuse
 - **reads the change, not just the diff** — file statuses, renames, churn and file kinds are sent as
   evidence, and lockfiles/build output never crowd the real change out of the prompt
 - **live streaming** — watch tokens appear as they generate
+- **know what it cost** — a token badge after every message, with a price when gitmuse knows the
+  model's rate; connected agents show tokens only, since they bill a plan you already pay for
 - **interactive TUI** — edit, regenerate, or confirm before anything is committed
 - **git hook support** — `gm install` fills in the message on every `git commit` (husky-aware)
 - **tiny footprint** — single ESM bundle, Node 18+, no native deps
@@ -165,6 +167,7 @@ gm config reset
 | `emoji`        | `false`          | add emoji to commit type     |
 | `autoConfirm`  | `false`          | skip TUI, commit immediately |
 | `language`     | `en`             | commit message language      |
+| `showUsage`    | `true`           | print the token/cost badge   |
 
 Connected agents store their settings under `agents.<id>`:
 
@@ -201,7 +204,7 @@ gm config set ollama.baseURL http://localhost:11434
 ```bash
 gm config set provider groq
 gm config set groq.apiKey gsk_xxxxxxxxxxxx
-gm config set groq.model llama-3.3-70b-versatile
+gm config set groq.model openai/gpt-oss-120b
 ```
 
 **OpenAI**
@@ -355,7 +358,7 @@ All config keys can be overridden via environment variables. Useful for CI or sh
 
 ```bash
 GITMUSE_PROVIDER=groq
-GITMUSE_MODEL=llama-3.3-70b-versatile
+GITMUSE_MODEL=openai/gpt-oss-120b
 GROQ_API_KEY=gsk_xxxxxxxxxxxx
 OPENAI_API_KEY=sk-xxxxxxxxxxxx
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
@@ -363,6 +366,44 @@ GEMINI_API_KEY=your_key_here
 ```
 
 Priority: **CLI flag > env var > config file > default**
+
+---
+
+## token usage and cost
+
+After each message, gitmuse prints what the request actually consumed:
+
+```
+✨ feat(agents): add Cursor CLI support
+
+  ↑ 4.0k in · ↓ 64 out · Cost: $0.0014
+```
+
+The counts are **reported by the provider**, not estimated from the diff — every adapter reads them
+off the response (`usage`, `x_groq.usage`, `usageMetadata`, `prompt_eval_count`, …).
+
+**Connected agents show tokens only, never a price:**
+
+```
+  ↑ 14k in · ↓ 133 out · 7.2k cached
+```
+
+That is deliberate, and it is what Claude Code and Codex CLI do too. Those requests bill a
+subscription you have already paid for, so a per-request dollar figure would be invented.
+
+**Cost appears only when gitmuse knows the model's rate.** Prices are first-party list rates, last
+checked on the date in `src/pricing.ts`. A model that is not in that table shows tokens and no
+price — gitmuse never guesses a dollar figure. Ollama reads as `local · free`.
+
+A note on cache: providers disagree about whether cached input is counted inside their input
+figure. Claude and Cursor report it separately (gitmuse sums them); Codex already includes it. The
+`cached` figure is the share of the input that was served from cache.
+
+Turn the badge off with:
+
+```bash
+gm config set showUsage false
+```
 
 ---
 

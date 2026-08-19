@@ -160,9 +160,34 @@ describe('codex definition', () => {
     expect(parse(codexCli, 'Shell cwd was reset to /tmp')).toBeUndefined();
   });
 
-  it('ends on a completed turn', () => {
+  it('ends on a completed turn, and reports usage when Codex sends any', () => {
+    // An empty usage object is not usage — "0 in · 0 out" is worse than silence.
     expect(parse(codexCli, ndjson({ type: 'turn.completed', usage: {} }))).toEqual({
       type: 'end',
+    });
+
+    // Codex's input_tokens already includes the cached part, so it is not summed.
+    expect(
+      parse(
+        codexCli,
+        ndjson({
+          type: 'turn.completed',
+          usage: {
+            input_tokens: 17885,
+            cached_input_tokens: 16768,
+            output_tokens: 5,
+            reasoning_output_tokens: 2,
+          },
+        }),
+      ),
+    ).toEqual({
+      type: 'usage',
+      usage: {
+        inputTokens: 17885,
+        outputTokens: 5,
+        cachedInputTokens: 16768,
+        reasoningTokens: 2,
+      },
     });
   });
 
@@ -289,6 +314,28 @@ describe('cursor definition', () => {
     expect(parse(cursorCli, ndjson({ type: 'system', subtype: 'init' }))).toBeUndefined();
     expect(parse(cursorCli, ndjson({ type: 'user', message: {} }))).toBeUndefined();
     expect(parse(cursorCli, 'not json')).toBeUndefined();
+  });
+
+  it('sums the cache tokens Cursor reports separately from input', () => {
+    // Verified live: the same prompt twice gave 7017+10227 and 11243+6001 —
+    // both exactly 17244, so the parts sum to the real prompt size.
+    expect(
+      parse(
+        cursorCli,
+        ndjson({
+          type: 'result',
+          usage: {
+            inputTokens: 7017,
+            outputTokens: 33,
+            cacheReadTokens: 10227,
+            cacheWriteTokens: 0,
+          },
+        }),
+      ),
+    ).toEqual({
+      type: 'usage',
+      usage: { inputTokens: 17244, outputTokens: 33, cachedInputTokens: 10227 },
+    });
   });
 
   it('surfaces result errors and ends on success', () => {
@@ -439,6 +486,28 @@ describe('claude-code definition', () => {
       }),
     );
     expect(thinking).toBeUndefined();
+  });
+
+  it('sums the cache tokens Claude reports separately from input', () => {
+    // Verified live: a ~10k-token prompt reported input_tokens: 9, with the
+    // rest split across cache read and cache creation.
+    expect(
+      parse(
+        claudeCode,
+        ndjson({
+          type: 'result',
+          usage: {
+            input_tokens: 9,
+            cache_creation_input_tokens: 4368,
+            cache_read_input_tokens: 6043,
+            output_tokens: 38,
+          },
+        }),
+      ),
+    ).toEqual({
+      type: 'usage',
+      usage: { inputTokens: 10420, outputTokens: 38, cachedInputTokens: 6043 },
+    });
   });
 
   it('surfaces result errors and ignores noise', () => {

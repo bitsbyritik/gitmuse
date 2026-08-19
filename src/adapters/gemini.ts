@@ -33,6 +33,8 @@ export class GeminiAdapter extends BaseAdapter {
    * Tokens are yielded incrementally as they arrive — callers render in real time.
    */
   async *stream(prompt: string): AsyncIterable<string> {
+    this.usage = undefined;
+
     try {
       const model = this.client.getGenerativeModel({ model: this.modelName });
       const result = await model.generateContentStream(prompt);
@@ -46,6 +48,15 @@ export class GeminiAdapter extends BaseAdapter {
           continue;
         }
         if (text) yield text;
+      }
+
+      // Resolves once the stream is drained, with counts for the whole call.
+      const meta = (await result.response).usageMetadata;
+      if (meta) {
+        this.usage = {
+          inputTokens: meta.promptTokenCount,
+          outputTokens: meta.candidatesTokenCount,
+        };
       }
     } catch (err) {
       if (err instanceof GoogleGenerativeAIFetchError) {

@@ -51,7 +51,7 @@ export async function setup(): Promise<void> {
         message: 'Groq API key (free at console.groq.com):',
         validate: (v) => v.trim().length > 0 || 'API key cannot be empty',
       });
-      partial.groq = { apiKey: apiKey.trim(), model: 'llama-3.3-70b-versatile' };
+      partial.groq = { apiKey: apiKey.trim(), model: 'openai/gpt-oss-120b' };
       break;
     }
 

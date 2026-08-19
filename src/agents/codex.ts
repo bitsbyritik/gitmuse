@@ -6,6 +6,8 @@ import type {
   ArgTier,
   CliAgent,
 } from './types.js';
+import { nonEmptyUsage } from '../usage.js';
+import type { TokenUsage } from '../usage.js';
 
 /**
  * Sentinel model meaning "whatever Codex is already configured to use".
@@ -16,11 +18,33 @@ import type {
  */
 const DEFAULT_MODEL = 'default';
 
+interface CodexUsage {
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  output_tokens?: number;
+  reasoning_output_tokens?: number;
+}
+
 interface CodexEventLine {
   type?: string;
   message?: string;
   item?: { type?: string; text?: string };
   error?: { message?: string };
+  usage?: CodexUsage;
+}
+
+/**
+ * Unlike Claude and Cursor, Codex's `input_tokens` already includes the cached
+ * portion — verified by running the same prompt twice: the total held at ~17.8k
+ * while `cached_input_tokens` swung from 1.4k to 16.8k.
+ */
+function readUsage(usage: CodexUsage): TokenUsage {
+  return {
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    cachedInputTokens: usage.cached_input_tokens || undefined,
+    reasoningTokens: usage.reasoning_output_tokens || undefined,
+  };
 }
 
 /** Codex wraps API failures as a JSON string; dig out the human sentence. */
@@ -134,8 +158,10 @@ export const codexCli: CliAgent = {
           message: readable(json.error?.message) ?? 'the agent reported an error',
         };
 
-      case 'turn.completed':
-        return { type: 'end' };
+      case 'turn.completed': {
+        const usage = json.usage && nonEmptyUsage(readUsage(json.usage));
+        return usage ? { type: 'usage', usage } : { type: 'end' };
+      }
 
       default:
         return undefined;

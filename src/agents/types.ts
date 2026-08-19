@@ -1,4 +1,5 @@
 import type { AgentProviderName } from '../types.js';
+import type { TokenUsage } from '../usage.js';
 
 /** How a spawned agent's stdout should be read. */
 export type AgentFormat = 'stream-json' | 'text';
@@ -16,10 +17,16 @@ export interface AgentInvocation {
  */
 export type ArgTier = 'full' | 'basic';
 
-/** A meaningful event parsed out of one line of an agent's stdout. */
+/**
+ * A meaningful event parsed out of one line of an agent's stdout.
+ *
+ * The line that ends a run yields `usage` when the CLI reported token counts
+ * and `end` when it did not — both mean "the run finished cleanly".
+ */
 export type AgentEvent =
   | { type: 'text'; text: string }
   | { type: 'error'; message: string }
+  | { type: 'usage'; usage: TokenUsage }
   | { type: 'end' };
 
 /**

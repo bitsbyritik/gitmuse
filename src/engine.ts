@@ -8,6 +8,31 @@ import { streamToTerminal, showTui } from './tui.js';
 import { writeMessageFile } from './hooks.js';
 import { handleFatalError } from './errors.js';
 import { logger, setSilent } from './logger.js';
+import { reportUsage } from './usage.js';
+import type { UsageContext } from './usage.js';
+import { findAgent, isAgentProvider, resolveModel } from './agents/index.js';
+
+/** The model actually asked for, however this provider stores that. */
+function modelInUse(config: Config): string {
+  if (isAgentProvider(config.provider)) {
+    const agent = findAgent(config.provider);
+    return agent ? resolveModel(agent, config.agents[config.provider] ?? {}) : '';
+  }
+
+  // Deliberately not `config.model`: no HTTP adapter reads the top-level model
+  // setting, so reporting it would price the request against a model that was
+  // never asked for.
+  const providerConfig: { model?: string } = config[config.provider];
+  return providerConfig.model ?? '';
+}
+
+function usageContext(config: Config): UsageContext {
+  return {
+    provider: config.provider,
+    model: modelInUse(config),
+    isAgent: isAgentProvider(config.provider),
+  };
+}
 
 /** Wraps a token stream so the spinner stops on the first token. */
 async function* withSpinnerStop(
@@ -77,6 +102,10 @@ export async function run(options: RunOptions): Promise<void> {
       config.emoji,
     ).raw;
 
+    if (config.showUsage && !options.silent) {
+      reportUsage(adapter.usage, usageContext(config));
+    }
+
     // Hook mode: hand the message to git and let git do the committing.
     if (options.write) {
       writeMessageFile(options.write, currentMessage);
@@ -113,6 +142,9 @@ export async function run(options: RunOptions): Promise<void> {
           await streamToTerminal(retryStream),
           config.emoji,
         ).raw;
+        if (config.showUsage && !options.silent) {
+          reportUsage(adapter.usage, usageContext(config));
+        }
         continue;
       }
 

@@ -28,6 +28,7 @@ export class CustomAdapter extends BaseAdapter {
   }
 
   async *stream(prompt: string): AsyncIterable<string> {
+    this.usage = undefined;
     let response: Awaited<ReturnType<typeof this.client.chat.completions.create>>;
 
     try {
@@ -44,6 +45,15 @@ export class CustomAdapter extends BaseAdapter {
 
     try {
       for await (const chunk of response) {
+        // `stream_options` is deliberately not requested here — plenty of
+        // OpenAI-compatible servers reject unknown parameters outright. Usage is
+        // reported only if the server volunteers it.
+        if (chunk.usage) {
+          this.usage = {
+            inputTokens: chunk.usage.prompt_tokens,
+            outputTokens: chunk.usage.completion_tokens,
+          };
+        }
         const token = chunk.choices[0]?.delta.content;
         if (token) yield token;
       }

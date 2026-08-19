@@ -5,6 +5,7 @@ import type { AgentSettings } from '../types.js';
 import type { AgentInvocation, AgentParseState, CliAgent } from '../agents/types.js';
 import { resolveCommand, resolveModel } from '../agents/index.js';
 import { AgentNotInstalledError, ProviderError } from '../errors.js';
+import { addUsage } from '../usage.js';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
@@ -36,6 +37,7 @@ export class CliAgentAdapter extends BaseAdapter {
   async *stream(prompt: string): AsyncIterable<string> {
     const model = resolveModel(this.agent, this.settings);
     let yielded = false;
+    this.usage = undefined;
 
     try {
       for await (const token of this.runOnce(
@@ -102,6 +104,8 @@ export class CliAgentAdapter extends BaseAdapter {
         const event = this.agent.parseEvent(trimmed, state);
         if (!event) continue;
         if (event.type === 'error') reportedError = event.message;
+        // Added, not replaced: the basic-tier retry runs the CLI a second time.
+        if (event.type === 'usage') this.usage = addUsage(this.usage, event.usage);
         if (event.type === 'text' && event.text) yield event.text;
       }
 

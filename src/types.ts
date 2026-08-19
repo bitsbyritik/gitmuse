@@ -64,6 +64,8 @@ export interface Config {
   emoji: boolean;
   autoConfirm: boolean;
   language: string;
+  /** Print the token/cost badge after each generation. */
+  showUsage: boolean;
   ollama: OllamaConfig;
   openai: OpenAIConfig;
   groq: GroqConfig;

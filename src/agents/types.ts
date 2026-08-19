@@ -77,8 +77,12 @@ export interface CliAgent {
   versionArgs: readonly string[];
   /** Args that report auth status, when the CLI can do that offline. */
   authArgs?: readonly string[];
-  /** Parses the output of `authArgs` into an AgentAuth. */
-  parseAuth?(stdout: string): AgentAuth;
+  /**
+   * Parses the output of `authArgs` into an AgentAuth. Receives stdout when the
+   * CLI wrote anything there, otherwise stderr — CLIs disagree about which
+   * stream status belongs on.
+   */
+  parseAuth?(output: string): AgentAuth;
 
   /** Builds one non-interactive invocation for the given model. */
   buildInvocation(model: string, tier: ArgTier): AgentInvocation;

@@ -35,7 +35,7 @@ program
 
 program
   .command('connect [agent]')
-  .description('connect a coding agent you are signed in to (e.g. claude-code)')
+  .description('connect a coding agent you are signed in to (e.g. claude-code, codex)')
   .option('-m, --model <model>', 'model to request from the agent')
   .option('-l, --list', 'show agent status and exit')
   .option('--no-test', 'skip the live test request')

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { claudeCode } from '../src/agents/claude-code.js';
+import { codexCli } from '../src/agents/codex.js';
 import {
   CLI_AGENTS,
   findAgent,
@@ -38,15 +39,23 @@ function fakeAgent(scripts: Record<ArgTier, string>, format: 'stream-json' | 'te
 const ndjson = (obj: unknown): string => JSON.stringify(obj);
 
 describe('agent registry', () => {
-  it('registers claude-code', () => {
+  it('registers claude-code and codex', () => {
     expect(findAgent('claude-code')).toBe(claudeCode);
+    expect(findAgent('codex')).toBe(codexCli);
     expect(CLI_AGENTS).toContain(claudeCode);
+    expect(CLI_AGENTS).toContain(codexCli);
+  });
+
+  it('gives every agent a unique id', () => {
+    const ids = CLI_AGENTS.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('does not treat HTTP providers as agents', () => {
     expect(findAgent('openai')).toBeUndefined();
     expect(isAgentProvider('openai')).toBe(false);
     expect(isAgentProvider('claude-code')).toBe(true);
+    expect(isAgentProvider('codex')).toBe(true);
   });
 
   it('prefers configured command and model over the defaults', () => {
@@ -54,6 +63,115 @@ describe('agent registry', () => {
     expect(resolveCommand(claudeCode, { command: '/opt/claude' })).toBe('/opt/claude');
     expect(resolveModel(claudeCode)).toBe('sonnet');
     expect(resolveModel(claudeCode, { model: 'opus' })).toBe('opus');
+
+    expect(resolveCommand(codexCli)).toBe('codex');
+    expect(resolveModel(codexCli)).toBe('default');
+    expect(resolveModel(codexCli, { model: 'gpt-5.5' })).toBe('gpt-5.5');
+  });
+});
+
+describe('codex definition', () => {
+  it('runs `exec` non-interactively with NDJSON output', () => {
+    const { args, format } = codexCli.buildInvocation('gpt-5.5', 'full');
+    expect(args[0]).toBe('exec');
+    expect(args).toContain('--json');
+    expect(args).toContain('--skip-git-repo-check');
+    expect(args[args.indexOf('--sandbox') + 1]).toBe('read-only');
+    expect(args[args.indexOf('--model') + 1]).toBe('gpt-5.5');
+    expect(format).toBe('stream-json');
+  });
+
+  it('names no model on the "default" pick, so any plan can run it', () => {
+    expect(codexCli.buildInvocation('default', 'full').args).not.toContain('--model');
+    expect(codexCli.buildInvocation('', 'full').args).not.toContain('--model');
+  });
+
+  it('drops the newer flags on the basic tier but keeps NDJSON', () => {
+    const { args, format } = codexCli.buildInvocation('gpt-5.5', 'basic');
+    expect(format).toBe('stream-json');
+    expect(args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--sandbox',
+      'read-only',
+      '--model',
+      'gpt-5.5',
+    ]);
+    expect(args).not.toContain('--ephemeral');
+    expect(args).not.toContain('-c');
+  });
+
+  it('reads the one-line login status', () => {
+    expect(codexCli.parseAuth?.('Logged in using ChatGPT')).toEqual({
+      connected: true,
+      method: 'chatgpt',
+    });
+    expect(codexCli.parseAuth?.('Logged in using an API key - sk-abc')).toEqual({
+      connected: true,
+      method: 'api-key',
+    });
+    expect(codexCli.parseAuth?.('Not logged in').connected).toBe(false);
+    expect(codexCli.parseAuth?.('').connected).toBe(false);
+  });
+
+  it('never echoes back the API key fragment the CLI prints', () => {
+    const auth = codexCli.parseAuth?.('Logged in using an API key - sk-proj-secret');
+    expect(JSON.stringify(auth)).not.toContain('sk-proj-secret');
+  });
+
+  it('yields the agent message and ignores reasoning and tool items', () => {
+    expect(
+      codexCli.parseEvent(
+        ndjson({ type: 'item.completed', item: { type: 'agent_message', text: 'fix: x' } }),
+      ),
+    ).toEqual({ type: 'text', text: 'fix: x' });
+
+    expect(
+      codexCli.parseEvent(
+        ndjson({ type: 'item.completed', item: { type: 'reasoning', text: 'hmm' } }),
+      ),
+    ).toBeUndefined();
+    expect(
+      codexCli.parseEvent(
+        ndjson({ type: 'item.completed', item: { type: 'command_execution', text: 'ls' } }),
+      ),
+    ).toBeUndefined();
+    expect(codexCli.parseEvent(ndjson({ type: 'thread.started', thread_id: 'x' }))).toBeUndefined();
+    expect(codexCli.parseEvent('Shell cwd was reset to /tmp')).toBeUndefined();
+  });
+
+  it('ends on a completed turn', () => {
+    expect(codexCli.parseEvent(ndjson({ type: 'turn.completed', usage: {} }))).toEqual({
+      type: 'end',
+    });
+  });
+
+  it('unwraps the API error Codex nests inside a JSON string', () => {
+    const nested = JSON.stringify({
+      type: 'error',
+      status: 400,
+      error: { type: 'invalid_request_error', message: 'model is not supported' },
+    });
+
+    expect(codexCli.parseEvent(ndjson({ type: 'error', message: nested }))).toEqual({
+      type: 'error',
+      message: 'model is not supported',
+    });
+    expect(
+      codexCli.parseEvent(ndjson({ type: 'turn.failed', error: { message: nested } })),
+    ).toEqual({ type: 'error', message: 'model is not supported' });
+  });
+
+  it('falls back to the raw message when it is not nested JSON', () => {
+    expect(codexCli.parseEvent(ndjson({ type: 'error', message: 'stream disconnected' }))).toEqual({
+      type: 'error',
+      message: 'stream disconnected',
+    });
+    expect(codexCli.parseEvent(ndjson({ type: 'turn.failed' }))).toEqual({
+      type: 'error',
+      message: 'the agent reported an error',
+    });
   });
 });
 
@@ -134,7 +252,10 @@ describe('CliAgentAdapter', () => {
       }),
       ndjson({
         type: 'stream_event',
-        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'reject expired tokens' } },
+        event: {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: 'reject expired tokens' },
+        },
       }),
       ndjson({ type: 'result', is_error: false, result: 'fix(auth): reject expired tokens' }),
     ];
@@ -158,6 +279,19 @@ describe('CliAgentAdapter', () => {
       fakeAgent(
         {
           full: `process.stderr.write("error: unknown option '--effort'");process.exit(1)`,
+          basic: `process.stdout.write("chore: bump deps")`,
+        },
+        'stream-json',
+      ),
+    );
+    await expect(collect(adapter)).resolves.toBe('chore: bump deps');
+  });
+
+  it('retries when a clap-based CLI calls the flag an "unexpected argument"', async () => {
+    const adapter = new CliAgentAdapter(
+      fakeAgent(
+        {
+          full: `process.stderr.write("error: unexpected argument '--ephemeral' found");process.exit(2)`,
           basic: `process.stdout.write("chore: bump deps")`,
         },
         'stream-json',

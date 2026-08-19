@@ -68,6 +68,16 @@ export function listAgents(config: Config = getConfig()): void {
   console.log(`\n  ${paint('Connect one with: gm connect', chalk.dim)}\n`);
 }
 
+/**
+ * Label for one model choice. The conventional id "default" means "whatever the
+ * agent itself is set to" — agents whose model list varies by plan or version
+ * use it so gitmuse never pins a model the account cannot request.
+ */
+function modelLabel(agent: CliAgent, model: string, index: number): string {
+  if (model === 'default') return `default  (whatever ${agent.name} is already set to)`;
+  return index === 0 ? `${model}  (recommended)` : model;
+}
+
 /** Runs the agent's own login command, inheriting the terminal. */
 function runLogin(agent: CliAgent, command: string): void {
   const [, ...loginArgs] = agent.loginCommand.split(' ');
@@ -159,7 +169,7 @@ export async function connectAgent(
             message: 'Which model should gitmuse ask for?',
             choices: agent.models.map((m, i) => ({
               value: m,
-              name: i === 0 ? `${m}  (recommended)` : m,
+              name: modelLabel(agent, m, i),
             })),
           });
   }

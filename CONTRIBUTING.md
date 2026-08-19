@@ -39,23 +39,31 @@ Look at `src/adapters/groq.ts` as the simplest reference implementation.
 
 ## adding a CLI agent
 
-An **agent** is a coding CLI the user is already signed in to (Claude Code today, Codex CLI next).
+An **agent** is a coding CLI the user is already signed in to (Claude Code and Codex CLI today).
 gitmuse spawns it instead of holding a key — so there is no credential to store, and no OAuth flow
 to reimplement. `src/adapters/cli-agent.ts` does the spawning, streaming, timeout and error
 handling for every agent, so adding one is a single definition file:
 
 1. Create `src/agents/<name>.ts` exporting a `CliAgent` (see `src/agents/types.ts` for the contract):
    - `versionArgs` — how to detect the binary
-   - `authArgs` + `parseAuth` — how the CLI reports who is signed in (offline, no request)
+   - `authArgs` + `parseAuth` — how the CLI reports who is signed in (offline, no request).
+     `parseAuth` gets stdout when the CLI wrote anything there, else stderr — Claude Code prints
+     status on stdout, Codex on stderr
    - `buildInvocation(model, tier)` — argv for a one-shot, non-interactive completion.
      `full` may use any flag; `basic` must use only flags the CLI has had for a long time —
      it is retried automatically when an older install rejects a newer flag
    - `parseEvent(line)` — turn one line of stdout into `text` / `error` / `end`
 2. Add the id to `AgentProviderName` in `src/types.ts`
 3. Push it into `CLI_AGENTS` in `src/agents/index.ts`, and drop it from `PLANNED_AGENTS`
+4. Add the id to the agent `case` list in `src/setup.ts` so the wizard offers it
 
-That is all — `gm connect`, `gm setup`, config (`agents.<id>.*`), the adapter and the error
-messages pick it up from the registry. Use `src/agents/claude-code.ts` as the reference.
+That is all — `gm connect`, config (`agents.<id>.*`), the adapter and the error messages pick it up
+from the registry. Use `src/agents/claude-code.ts` (stream deltas, JSON auth) or
+`src/agents/codex.ts` (whole-message events, text auth) as the reference.
+
+If the CLI's usable models depend on the user's plan or its own version, list `'default'` first and
+have `buildInvocation` pass no model flag for it. Pinning a slug the account cannot request fails
+every run — `gm connect` renders `default` as "whatever <agent> is already set to".
 
 **Ground rule:** never read, copy, or reuse another tool's credential files or tokens. gitmuse
 only ever *runs the agent's own CLI* and lets that CLI authenticate itself.

@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import type { AgentProviderName, AgentSettings } from '../types.js';
 import type { AgentAuth, AgentStatus, CliAgent } from './types.js';
 import { claudeCode } from './claude-code.js';
+import { codexCli } from './codex.js';
 
 /**
  * Every agent gitmuse can connect to.
@@ -10,11 +11,11 @@ import { claudeCode } from './claude-code.js';
  * `AgentProviderName` in `src/types.ts`, and push it here. The connect flow,
  * config, adapter and error handling all pick it up automatically.
  */
-export const CLI_AGENTS: readonly CliAgent[] = [claudeCode];
+export const CLI_AGENTS: readonly CliAgent[] = [claudeCode, codexCli];
 
 /** Agents we intend to support — shown as "coming soon" in `gm connect`. */
 export const PLANNED_AGENTS: readonly { name: string; vendor: string; note: string }[] = [
-  { name: 'Codex CLI', vendor: 'OpenAI', note: 'coming soon — contributions welcome' },
+  { name: 'Gemini CLI', vendor: 'Google', note: 'coming soon — contributions welcome' },
 ];
 
 export const AGENT_IDS: readonly AgentProviderName[] = CLI_AGENTS.map((a) => a.id);
@@ -56,8 +57,12 @@ function readAuth(agent: CliAgent, command: string): AgentAuth | undefined {
     };
   }
 
+  // Some CLIs report status on stdout (Claude Code's JSON), others on stderr
+  // (Codex). Hand the parser whichever stream the CLI actually used.
+  const output = result.stdout.trim() || result.stderr;
+
   try {
-    return agent.parseAuth(result.stdout);
+    return agent.parseAuth(output);
   } catch {
     return { connected: false };
   }

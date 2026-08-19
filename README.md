@@ -24,8 +24,8 @@ npm install -g gitmuse
 ## features
 
 - **zero config to start** — works with Ollama out of the box, no API key needed
-- **connect an agent you already pay for** — `gm connect` borrows Claude Code, so a Claude
-  Pro/Max subscription generates your commit messages with no API key at all
+- **connect an agent you already pay for** — `gm connect` borrows Claude Code or Codex CLI, so a
+  Claude Pro/Max subscription or a ChatGPT plan generates your commit messages with no API key at all
 - **free cloud tier** — Groq's free API gives you 14,000 requests/day at zero cost
 - **any provider** — Ollama, OpenAI, Groq, Anthropic, Gemini, or any OpenAI-compatible endpoint
 - **conventional commits** — picks the right type per diff (`fix`, `docs`, `refactor`, …), with a
@@ -50,19 +50,20 @@ npm install -g gitmuse
 
 ## quick start
 
-### option 1 — connect Claude Code (no API key)
+### option 1 — connect an agent you already pay for (no API key)
 
-Already signed in to Claude Code with a Claude Pro/Max subscription? Borrow it:
+Already signed in to Claude Code (Claude Pro/Max) or Codex CLI (a ChatGPT plan)? Borrow it:
 
 ```bash
 npm install -g gitmuse
-gm connect          # finds Claude Code, checks your sign-in, sends a test request
+gm connect          # pick the agent, checks your sign-in, sends a test request
 
 git add .
 gm
 ```
 
-Nothing is stored but your choice of agent and model — Claude Code keeps owning the credential.
+Nothing is stored but your choice of agent and model — the agent's own CLI keeps owning the
+credential.
 
 ### option 2 — fully free with Groq
 
@@ -123,6 +124,7 @@ gm --provider openai
 # connect / re-check a local coding agent
 gm connect
 gm connect claude-code --model sonnet
+gm connect codex --model gpt-5.5
 gm connect --list
 
 # install as a git hook (runs on every git commit)
@@ -164,11 +166,17 @@ gm config reset
 
 Connected agents store their settings under `agents.<id>`:
 
-| key                          | default   | description                             |
-| ---------------------------- | --------- | --------------------------------------- |
-| `agents.claude-code.model`   | `sonnet`  | model to ask the agent for              |
-| `agents.claude-code.command` | `claude`  | path/name of the executable to spawn    |
-| `agents.claude-code.timeoutMs` | `120000` | how long to wait for the agent to reply |
+| key                            | default   | description                             |
+| ------------------------------ | --------- | --------------------------------------- |
+| `agents.claude-code.model`     | `sonnet`  | model to ask the agent for              |
+| `agents.claude-code.command`   | `claude`  | path/name of the executable to spawn    |
+| `agents.claude-code.timeoutMs` | `120000`  | how long to wait for the agent to reply |
+| `agents.codex.model`           | `default` | model to ask for; `default` names none  |
+| `agents.codex.command`         | `codex`   | path/name of the executable to spawn    |
+| `agents.codex.timeoutMs`       | `120000`  | how long to wait for the agent to reply |
+
+`agents.codex.model` is `default` on purpose: which slugs a Codex account may request depends on the
+plan and the CLI version, so gitmuse passes no `--model` unless you name one.
 
 ### provider setup
 
@@ -279,30 +287,34 @@ gm connect --list     # who is installed, who is signed in, what is in use
 ```
   Agents
 
-  ●  Claude Code   signed in · you@example.com · pro · v2.1.234  ← in use
-  ·  Codex CLI     coming soon — contributions welcome
+  ◉  Claude Code   signed in · you@example.com · pro · v2.1.235  ← in use
+  ●  Codex CLI     signed in · v0.139.0
+  ·  Gemini CLI    coming soon — contributions welcome
 ```
 
 **Supported today**
 
-| agent           | vendor    | runs on                            | install                                  |
-| --------------- | --------- | ---------------------------------- | ---------------------------------------- |
-| **Claude Code** | Anthropic | your Claude Pro/Max subscription (or its API key, if that is how you set it up) | `npm install -g @anthropic-ai/claude-code` |
+| agent           | vendor    | runs on                                                                            | install                                    |
+| --------------- | --------- | ---------------------------------------------------------------------------------- | ------------------------------------------ |
+| **Claude Code** | Anthropic | your Claude Pro/Max subscription (or its API key, if that is how you set it up)    | `npm install -g @anthropic-ai/claude-code` |
+| **Codex CLI**   | OpenAI    | your ChatGPT Plus/Pro/Business plan (or its API key, if that is how you set it up) | `npm install -g @openai/codex`             |
 
-Codex CLI is next — the registry in `src/agents/index.ts` takes one definition file per agent, so
-adding your own is a small PR (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent)).
+The registry in `src/agents/index.ts` takes one definition file per agent, so adding another is a
+small PR (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-cli-agent)).
 
 **How it works**
 
-`gm connect` runs `claude --version` to find the binary, `claude auth status` to see who is signed
-in, then sends one tiny prompt to prove the whole path works before saving anything. At commit
-time gitmuse runs the agent with `-p` (print mode) outside your repo, so your project's agent
-instructions, hooks and MCP servers never enter the request.
+`gm connect` runs the agent's `--version` to find the binary and its own status command
+(`claude auth status`, `codex login status`) to see who is signed in, then sends one tiny prompt to
+prove the whole path works before saving anything. At commit time gitmuse runs the agent
+non-interactively (`claude -p`, `codex exec --json`) from a temp dir, not your repo, so your
+project's agent instructions, hooks and MCP servers never enter the request — and Codex runs in its
+`read-only` sandbox, since writing a commit message needs no write access to anything.
 
-**gitmuse never touches your credentials.** It does not read `~/.claude`, does not copy tokens, and
-stores no secret of its own — the agent's CLI authenticates itself, exactly as it does when you use
-it directly. (Extracting a subscription token to call the API yourself is against Anthropic's terms;
-this feature exists so nobody needs to.)
+**gitmuse never touches your credentials.** It does not read `~/.claude` or `~/.codex/auth.json`,
+does not copy tokens, and stores no secret of its own — the agent's CLI authenticates itself,
+exactly as it does when you use it directly. (Extracting a subscription token to call the API
+yourself is against these vendors' terms; this feature exists so nobody needs to.)
 
 **Trade-offs**
 

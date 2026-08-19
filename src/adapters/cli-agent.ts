@@ -11,7 +11,8 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 /** Thrown internally when the installed CLI rejects one of our newer flags. */
 class UnsupportedFlagError extends Error {}
 
-const UNSUPPORTED_FLAG = /unknown (option|argument)|unrecognized option|error: unknown/i;
+const UNSUPPORTED_FLAG =
+  /unknown (option|argument)|unrecognized option|unexpected argument|error: unknown/i;
 
 /**
  * Runs a local coding agent's CLI in non-interactive mode and streams the text
